@@ -1,0 +1,6 @@
+{
+  "name": "SURAKSHA-X — Disaster Intelligence & Relocation Platform",
+  "description": "AI + GIS based disaster relocation decision-support platform for flood and hazard emergency response by Team ZYVEN.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

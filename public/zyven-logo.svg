@@ -1,0 +1,42 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="zyven-blue-top" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#0062FF" />
+      <stop offset="100%" stopColor="#00D2FF" />
+    </linearGradient>
+    <linearGradient id="zyven-blue-bottom" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#0052EA" />
+      <stop offset="100%" stopColor="#00C2FF" />
+    </linearGradient>
+    <linearGradient id="zyven-green-diag" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#0099FF" />
+      <stop offset="30%" stopColor="#00C853" />
+      <stop offset="70%" stopColor="#00E676" />
+      <stop offset="100%" stopColor="#00E5FF" />
+    </linearGradient>
+  </defs>
+
+  <!-- Top Bar -->
+  <path d="M 40 30 L 190 30 C 196 30 200 35 196 42 L 165 88 L 75 88 L 100 42 C 102 36 98 30 92 30 Z" fill="url(#zyven-blue-top)" />
+
+  <!-- Bottom Bar -->
+  <path d="M 140 135 L 50 135 C 44 135 40 141 44 148 L 75 192 L 165 192 L 140 148 C 138 142 142 135 148 135 Z" fill="url(#zyven-blue-bottom)" />
+
+  <!-- Diagonal Green Bar with Topo Waves -->
+  <g>
+    <path d="M 190 30 C 198 38 196 50 186 64 L 66 182 C 54 194 38 196 30 186 C 22 176 26 162 38 148 L 160 32 C 170 20 182 22 190 30 Z" fill="url(#zyven-green-diag)" />
+    
+    <!-- Topographic Curves -->
+    <path d="M 50 165 Q 80 150 100 165 T 165 110" stroke="rgba(255,255,255,0.4)" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 75 175 Q 100 135 130 145 T 180 75" stroke="rgba(255,255,255,0.35)" stroke-width="3" fill="none" stroke-linecap="round" />
+    <path d="M 105 110 Q 125 75 155 85 T 190 45" stroke="rgba(255,255,255,0.3)" stroke-width="2.5" fill="none" stroke-linecap="round" />
+
+    <!-- Ripple waves -->
+    <ellipse cx="115" cy="120" rx="24" ry="10" stroke="#FFFFFF" stroke-width="3" stroke-opacity="0.8" fill="none" />
+    <ellipse cx="115" cy="120" rx="14" ry="6" stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.9" fill="none" />
+
+    <!-- Center Pin -->
+    <path d="M 115 88 C 106 88 100 94 100 103 C 100 114 115 127 115 127 C 115 127 130 114 130 103 C 130 94 124 88 115 88 Z" fill="#FFFFFF" />
+    <circle cx="115" cy="102" r="4.5" fill="#00C853" />
+  </g>
+</svg>
