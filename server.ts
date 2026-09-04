@@ -8,9 +8,31 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  // Basic per-IP rate limiting for /api/chat: the Gemini key never reaches
+  // the client, but the endpoint itself is open to anyone who can reach the
+  // deployed app, so without this a visitor could hammer it to burn Gemini
+  // quota/cost. In-memory sliding window is sufficient at this app's scale.
+  const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
+  const CHAT_RATE_LIMIT_MAX_REQUESTS = 20;
+  const chatRequestLog = new Map<string, number[]>();
+
+  const isChatRateLimited = (ip: string): boolean => {
+    const now = Date.now();
+    const timestamps = (chatRequestLog.get(ip) || []).filter(
+      (t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS
+    );
+    if (timestamps.length >= CHAT_RATE_LIMIT_MAX_REQUESTS) {
+      chatRequestLog.set(ip, timestamps);
+      return true;
+    }
+    timestamps.push(now);
+    chatRequestLog.set(ip, timestamps);
+    return false;
+  };
 
   // Lazy Gemini Client initialization
   const getGeminiClient = (): GoogleGenAI | null => {
@@ -41,6 +63,11 @@ async function startServer() {
   // Context-Aware Gemini Chatbot Endpoint
   app.post('/api/chat', async (req, res) => {
     try {
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      if (isChatRateLimited(clientIp)) {
+        return res.status(429).json({ error: 'Too many requests — please slow down.' });
+      }
+
       const { message, context, conversationHistory } = req.body;
 
       if (!message) {

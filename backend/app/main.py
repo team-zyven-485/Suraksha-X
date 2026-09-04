@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
 
 from dotenv import load_dotenv
 
@@ -27,6 +29,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ----------------------------------------------------------------------------
+# Basic per-IP rate limiting. Several endpoints here (satellite/process,
+# hazard/detect, roads/impact) are unauthenticated and — once real Copernicus
+# credentials are configured — trigger paid API calls and service-role writes
+# to Supabase (which bypass RLS entirely). Without this, anyone who can reach
+# the backend could spam those endpoints to burn API quota or flood the DB
+# with junk rows. In-memory sliding window is enough at this app's scale;
+# it resets on restart and isn't shared across replicas, which is an
+# acceptable tradeoff here rather than pulling in a Redis dependency.
+# ----------------------------------------------------------------------------
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_MAX_REQUESTS = 30
+_request_log: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    timestamps = _request_log[client_ip]
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.pop(0)
+    if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+        return JSONResponse(
+            status_code=429,
+            content={"status": "error", "message": "Too many requests — please slow down."},
+        )
+    timestamps.append(now)
+    return await call_next(request)
 
 
 @app.exception_handler(Exception)
