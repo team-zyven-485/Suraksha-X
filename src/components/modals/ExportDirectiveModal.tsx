@@ -405,7 +405,7 @@ export const ExportDirectiveModal: React.FC<ExportDirectiveModalProps> = ({
           {activeTab === 'json' && (
             <div className="space-y-3">
               <div className="p-3 rounded bg-purple-950/30 border border-purple-500/30 text-xs text-purple-300 flex items-center justify-between">
-                <span>Full JSON payload schema for REST API sync and Supabase database ingestion.</span>
+                <span>Full JSON payload schema for REST API sync and database ingestion.</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleCopy(JSON.stringify(plan, null, 2))}

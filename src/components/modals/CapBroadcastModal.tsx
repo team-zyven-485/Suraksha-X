@@ -19,7 +19,7 @@ import {
 import { RelocationPlan } from '../../types';
 import { useDisaster } from '../../context/DisasterContext';
 import { generateCapXml } from '../../utils/exportUtils';
-import { persistCapBroadcast } from '../../lib/supabase';
+import { persistCapBroadcast } from '../../lib/persistence';
 
 interface CapBroadcastModalProps {
   plan: RelocationPlan | null;
@@ -32,7 +32,7 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addToast, addAlert } = useDisaster();
+  const { addToast, addAlert, scenarioMeta } = useDisaster();
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastStage, setBroadcastStage] = useState<number>(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -111,7 +111,7 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
 
     const channelCount = activeChannelSteps.length;
 
-    // Persist to Supabase / Local storage
+    // Persist to the server (MongoDB); falls back to local storage
     await persistCapBroadcast({
       identifier: `SURAKSHA-CAP-${plan.id}-${Date.now()}`,
       sender: 'Admin (Incident Commander Alpha)',
@@ -120,7 +120,7 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
       msgType: 'Alert',
       headline: `IMMEDIATE EVACUATION ORDER: ${plan.zoneName}`,
       description: `Phased relocation of ${plan.vulnerablePopulation} priority citizens to ${plan.recommendedShelter.name} via ${plan.primaryRoute.destinationName}.`,
-      areaDesc: `${plan.zoneName}, Kamrup Basin`,
+      areaDesc: `${plan.zoneName}, ${scenarioMeta.region}`,
       channels: Object.keys(channels).filter((k) => (channels as any)[k]),
     });
 

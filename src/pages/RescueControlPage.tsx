@@ -71,7 +71,7 @@ export const RescueControlPage: React.FC = () => {
     setNotes('');
   };
 
-  const submitAssignment = () => {
+  const submitAssignment = async () => {
     if (!teamPickerFor || !pickedTeamId) return;
     // Re-validate against live team status right before writing — the pick
     // may have gone stale while the modal was open (another admin session,
@@ -82,13 +82,20 @@ export const RescueControlPage: React.FC = () => {
       setPickedTeamId(null);
       return;
     }
-    assignTeam(teamPickerFor, pickedTeamId, {
+    const ok = await assignTeam(teamPickerFor, pickedTeamId, {
       priority: priorityOverride ?? undefined,
       requiredAction: requiredAction || 'Proceed to incident location and assess situation',
       notes,
       issuedBy: user?.name || 'Admin',
     });
-    closeAssignModal();
+    if (ok) {
+      closeAssignModal();
+    } else {
+      // The server refused (team taken / incident already assigned): the list
+      // has just been refreshed, so let the admin pick again.
+      addToast('warning', 'ASSIGNMENT NOT APPLIED', 'The team or incident changed while you were assigning. Review the updated list and try again.');
+      setPickedTeamId(null);
+    }
   };
 
   const activeSOS = incidents.filter((i) => i.status !== 'CLOSED' && i.status !== 'RESCUED');

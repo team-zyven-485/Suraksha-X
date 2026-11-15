@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DisasterProvider, useDisaster } from './context/DisasterContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { I18nProvider } from './i18n';
 import { SOSProvider } from './context/SOSContext';
 import { SatelliteProvider } from './context/SatelliteContext';
 import { Sidebar } from './components/layout/Sidebar';
@@ -129,6 +130,7 @@ const RoleGate: React.FC = () => {
 
 export default function App() {
   return (
+    <I18nProvider>
     <AuthProvider>
       {/* DisasterProvider + SOSProvider stay mounted across role switches so
           SOS incidents and scenario state are shared between Citizen, Admin,
@@ -141,5 +143,6 @@ export default function App() {
         </SOSProvider>
       </DisasterProvider>
     </AuthProvider>
+    </I18nProvider>
   );
 }

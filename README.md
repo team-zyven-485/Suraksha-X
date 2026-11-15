@@ -1,100 +1,89 @@
 # SURAKSHA-X — Disaster Intelligence & Relocation Platform
 
-Multi-hazard disaster response platform (SIH26191) covering Admin command &
-control, Citizen emergency assistance, and Rescue Team field coordination —
-with satellite-informed hazard/route intelligence and a Gemini-backed AI
-copilot (falls back to a local tactical engine when no Gemini key is set).
+Multi-hazard disaster response platform (SIH26191) with three role-based apps —
+**Admin** command & control, **Citizen** emergency assistance, and **Rescue Team**
+field coordination — plus satellite-informed hazard/route intelligence and an AI
+copilot (Gemini, with a built-in rule-based fallback).
+
+## What is real and what is simulated
+
+| Feature | Status |
+|---|---|
+| SOS → triage → assignment → dispatch → rescue lifecycle | **Real.** Stored in MongoDB, enforced server-side (roles, ownership, forward-only status). |
+| Role security | **Real.** Admin / Rescue need an access code; sessions are signed tokens; the server recomputes risk/priority/team for every SOS. |
+| Offline SOS | **Real.** App opens offline (service worker). An SOS raised with no connection is stored on the device and sent automatically when the connection returns (idempotent — never duplicated). Limit: it needs *some* connectivity to be delivered; there is no satellite/mesh link. |
+| Languages | **Real.** English, Hindi, Marathi for the Citizen app and role screen. Admin / Rescue screens, zone names and route instructions are English. |
+| Live weather | **Real.** Current conditions + 3-day rain forecast from Open-Meteo (free, no key). Shows "unavailable" instead of guessing if the feed is down. |
+| Risk / priority scoring, team recommendation | **Rule-based formulas** over scenario data (distance, zone risk level, specialization). Not a trained ML model. |
+| Hazard scenarios (flood, earthquake, cyclone, landslide, tsunami) | **Bundled sample data** for 5 regions — not live feeds. |
+| Satellite Intelligence | Sentinel-1 via Copernicus when credentials are set; otherwise clearly labelled **DEMO DATA**. |
+| Live traffic, IoT river sensors | **Not implemented.** Routes are scenario data plus satellite road-risk checks. |
+| CAP broadcast | Generates a CAP XML alert and logs it. It does **not** actually send SMS / radio / sirens. |
 
 ## Architecture
 
-This repo has three moving parts:
+```
+Browser (React + Vite, PWA)  ──/api──▶  Node/Express server (server.ts, server/)  ──▶  MongoDB
+                                                    │
+                                                    └─▶ Gemini (chat), Open-Meteo (weather)
+Optional: FastAPI satellite service (backend/) ──▶ Copernicus, MongoDB
+```
 
-1. **Frontend + chat API** — React/Vite app served by an Express server
-   ([server.ts](server.ts)), which also hosts `/api/chat` and `/api/health`.
-   This is the only piece required to run the app.
-2. **Satellite Intelligence backend** (`backend/`) — a separate FastAPI
-   service providing Sentinel-1-derived hazard extent, road-risk, and
-   safe-routing data. Optional: without it (or without Copernicus
-   credentials configured), the Satellite Intelligence pages run in an
-   honest DEMO DATA mode instead of failing.
-3. **Supabase** — Postgres + RLS + Realtime, used for SOS incidents, rescue
-   team coordination, and relocation plans. Optional: without it configured,
-   the app runs entirely on local in-memory scenario data.
-
-## Prerequisites
-
-- Node.js 18+
-- Python 3.11+ (only if you want to run the satellite backend locally)
+* `server.ts` + `server/` — API, auth, MongoDB store, rate limiting, static hosting.
+* `src/shared/sosTriage.ts` — triage rules used by the server (authoritative) and the browser (instant offline assessment).
+* `src/` — React app. `public/sw.js` — offline service worker (production builds only).
+* `backend/` — optional FastAPI satellite service.
 
 ## Setup
 
+Requires Node 18+ (Python 3.11+ only for the optional satellite service).
+
 ```bash
 npm install
-cp .env.example .env
+cp .env.example .env     # then edit it
+npm run dev              # http://localhost:3000
 ```
 
-Fill in `.env`:
+Edit `.env`:
 
-- `GEMINI_API_KEY` — optional. Without a real key, the AI copilot still
-  works, answering from a local tactical-intelligence engine instead of
-  Gemini (the chat header honestly shows which one answered).
-- `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — optional, see Supabase
-  section below.
-- `VITE_API_BASE_URL` — where the satellite backend is reachable
-  (`http://localhost:8000` for local dev).
+* `MONGODB_URI` — your MongoDB / Atlas connection string. **Empty = in-memory mode** (works, but data is lost on restart; the sidebar shows "MEMORY MODE — NOT SAVED"). If the URI is set but unreachable the server says so loudly and falls back to memory.
+* `ADMIN_ACCESS_CODE`, `RESCUE_ACCESS_CODE` — codes for the two staff roles. If empty, the server generates temporary ones and prints them at startup.
+* `SESSION_SECRET` — 32+ random characters (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+* `GEMINI_API_KEY` — optional.
 
-## Running locally
+Atlas: add your IP (or `0.0.0.0/0` for a demo) under *Network Access*, and use a database user with read/write on the database.
 
-**Frontend + chat API** (required):
+## Tests
 
 ```bash
-npm run dev
+npm run lint        # type-check
+npm run dev         # in one terminal
+npm run test:api    # in another: 45 end-to-end API checks (auth, roles, ownership, lifecycle, rate limits)
 ```
 
-Opens at http://localhost:3000.
+`test:api` creates real incidents in whatever database the server uses — use a throwaway one
+(e.g. start the server with `MONGODB_DB=suraksha_test`).
 
-**Satellite Intelligence backend** (optional — only needed for live/DEMO
-satellite pages; everything else works without it):
+## Production
+
+```bash
+npm run build
+npm start           # one Node process serves the frontend and /api
+```
+
+Deploy to a host that runs a persistent Node process (Render, Railway, a VM). Set the same
+environment variables in the host's dashboard, plus `NODE_ENV=production` and `TRUST_PROXY=1`
+when behind the host's proxy. Offline support requires HTTPS (or localhost).
+
+## Satellite service (optional)
 
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate        # Windows; use `source .venv/bin/activate` on macOS/Linux
+python -m venv .venv && .venv\Scripts\activate    # source .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-Leave `COPERNICUS_CLIENT_ID`/`COPERNICUS_CLIENT_SECRET` blank in
-`backend/.env` to run this service in DEMO DATA mode.
-
-## Supabase setup (optional)
-
-Create a project at [supabase.com](https://supabase.com), then run the
-migrations in `supabase/migrations/` **in order** via the SQL Editor
-(0001 → 0004). Put the project URL and anon/publishable key in the root
-`.env`, and the service-role key in `backend/.env` (never in the frontend).
-
-## Production build
-
-```bash
-npm run build
-npm start
-```
-
-`npm start` runs the bundled Express server (`dist/server.cjs`) as a single
-persistent Node process serving both the frontend and `/api/chat`.
-
-## Deployment
-
-The Node app (`npm run build` + `npm start`) is built for a host that runs a
-persistent Node process — e.g. Render or Railway (import from GitHub,
-build command `npm run build`, start command `npm start`, set the env vars
-from `.env` in the platform's dashboard). It is **not** a serverless-shaped
-app as-is, so a static-site + serverless-functions platform (Vercel,
-Netlify) would need `/api/chat` and `/api/health` rewritten as individual
-serverless functions first.
-
-If you deploy the satellite backend too, remember to update `ALLOWED_ORIGINS`
-in `backend/.env` to your deployed frontend's real URL, and point the
-frontend's `VITE_API_BASE_URL` at the deployed backend.
+Leave the Copernicus credentials blank to run in DEMO DATA mode. Set `ALLOWED_ORIGINS` to your
+deployed frontend URL, and `VITE_API_BASE_URL` (frontend, at build time) to the deployed service.

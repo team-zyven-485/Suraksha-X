@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import os
 import time
+import zlib
 from datetime import datetime, timezone
 from typing import Optional
 
 from app.models.schemas import AOI, HazardExtentResponse
 from app.services.copernicus_service import CopernicusUnavailable, copernicus_service
 from app.services.flood_detection import demo_extent_geojson
-from app.services import supabase_service
+from app.services import mongo_service
 
 # Approximate AOI seed per demo scenario, matching the frontend's 5 disaster
 # scenarios so the satellite-derived extent lands in the right region on the
@@ -26,12 +27,12 @@ SCENARIO_AOI_SEEDS: dict[str, dict] = {
 _cache: dict[str, tuple[HazardExtentResponse, float]] = {}
 _CACHE_TTL_SECONDS = 300
 
-# Supabase row id of the most recently persisted hazard extent per AOI key,
+# MongoDB id of the most recently persisted hazard extent per AOI key,
 # so road-impact persistence can reference which observation it came from.
-_last_extent_id: dict[str, int] = {}
+_last_extent_id: dict[str, str] = {}
 
 
-def get_last_extent_id(aoi: AOI) -> "int | None":
+def get_last_extent_id(aoi: AOI) -> "str | None":
     return _last_extent_id.get(_cache_key(aoi))
 
 
@@ -59,7 +60,9 @@ def _cache_key(aoi: AOI) -> str:
 def _demo_seed_for(aoi: AOI) -> int:
     # Deterministic per-AOI seed so repeated demo calls are stable, but
     # different scenarios get visually distinct polygon shapes.
-    return abs(hash(aoi.scenario_id or f"{aoi.lat}:{aoi.lng}")) % 1000
+    # crc32, not hash(): Python randomizes str hashes per process, which would
+    # change the "deterministic" demo polygon on every backend restart.
+    return zlib.crc32((aoi.scenario_id or f"{aoi.lat}:{aoi.lng}").encode()) % 1000
 
 
 async def get_hazard_extent(aoi: AOI, force_demo: bool = False, use_cache: bool = True) -> HazardExtentResponse:
@@ -72,10 +75,10 @@ async def get_hazard_extent(aoi: AOI, force_demo: bool = False, use_cache: bool 
     result = await _compute_hazard_extent(aoi, force_demo=force_demo)
     _cache[key] = (result, time.time())
 
-    # Persist to Supabase (service-role, backend-only) so processed
+    # Persist to MongoDB (backend-only) so processed
     # observations survive restarts and are visible in the database. No-op
-    # if Supabase isn't configured on this backend deployment.
-    row_id = await supabase_service.persist_hazard_extent({
+    # if MongoDB isn't configured on this backend deployment.
+    row_id = await mongo_service.persist_hazard_extent({
         "scenario_id": aoi.scenario_id,
         "source": result.source,
         "product": result.product,

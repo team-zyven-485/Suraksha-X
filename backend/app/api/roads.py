@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.models.schemas import RoadImpact, RoadImpactRequest
-from app.services import hazard_service, road_impact, supabase_service
+from app.services import hazard_service, road_impact, mongo_service
 
 router = APIRouter(prefix="/api/roads", tags=["roads"])
 
@@ -18,7 +18,7 @@ async def road_impact_endpoint(req: RoadImpactRequest):
     impacts = road_impact.classify_roads(hazard, req.roads)
 
     extent_id = hazard_service.get_last_extent_id(req.aoi)
-    await supabase_service.persist_road_impacts(
+    await mongo_service.persist_road_impacts(
         extent_id,
         req.aoi.scenario_id,
         [

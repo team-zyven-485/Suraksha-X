@@ -1,95 +1,136 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { AuthUser, UserRole } from '../types/sos';
-import { getSupabaseClient } from '../lib/supabaseClient';
+import { api, ApiError, NetworkError, getDeviceId, getToken, setToken } from '../lib/api';
+
+const USER_KEY = 'suraksha_user';
+
+export interface LoginOptions {
+  /** Access code — required for admin and rescue. */
+  code?: string;
+  /** Rescue team to sign in as. */
+  teamId?: string;
+}
+
+export interface LoginResult {
+  ok: boolean;
+  error?: string;
+}
 
 interface AuthContextType {
   user: AuthUser | null;
-  loginAs: (role: UserRole) => Promise<void>;
+  loginAs: (role: UserRole, options?: LoginOptions) => Promise<LoginResult>;
   logout: () => Promise<void>;
-  isSupabaseAuth: boolean;
+  /**
+   * Make sure this device holds a valid server session (a citizen who raised
+   * an SOS offline needs one to send it). Returns true when a token exists.
+   */
+  ensureSession: () => Promise<boolean>;
 }
-
-// Local fallback identities — used only when Supabase isn't configured, so
-// the app still runs end-to-end on local mock data (see disasterService /
-// SOSContext fallbacks).
-const mockUsers: Record<UserRole, AuthUser> = {
-  citizen: { id: 'citizen-demo-01', name: 'Demo Citizen', role: 'citizen', teamId: null },
-  admin: { id: 'admin-alpha', name: 'Admin / Incident Commander Alpha', role: 'admin', teamId: null },
-  rescue: { id: 'team-alpha', name: 'Rescue Unit Alpha', role: 'rescue', teamId: 'team-alpha' },
-};
-
-// Display name + (for rescue) the fixed demo team link. The UI still just
-// shows three "Continue as X" buttons — no login form — but under the hood
-// each now creates/reuses a real Supabase Auth session (anonymous) with a
-// role-tagged profile row, so RLS policies have something real to check.
-const roleProfile: Record<UserRole, { name: string; teamId: string | null }> = {
-  citizen: { name: 'Demo Citizen', teamId: null },
-  admin: { name: 'Admin / Incident Commander Alpha', teamId: null },
-  rescue: { name: 'Rescue Unit Alpha', teamId: 'team-alpha' },
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function readStoredUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeUser(user: AuthUser | null) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const supabase = getSupabaseClient();
+  const [user, setUserState] = useState<AuthUser | null>(() => (getToken() ? readStoredUser() : readOfflineCitizen()));
 
-  // Restore an existing Supabase session on reload (so refreshing the page
-  // doesn't bounce back to the role-select screen).
+  const setUser = useCallback((u: AuthUser | null) => {
+    setUserState(u);
+    storeUser(u);
+  }, []);
+
+  // A citizen session created while the server was unreachable has no token.
+  function readOfflineCitizen(): AuthUser | null {
+    const stored = readStoredUser();
+    return stored && stored.role === 'citizen' && stored.offline ? stored : null;
+  }
+
+  // Revalidate a stored session on load. If the server is unreachable we keep
+  // the stored session so the app still opens offline; a rejected token
+  // (expired / secret rotated) signs the user out.
   useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(async ({ data }) => {
-      const authUser = data.session?.user;
-      if (!authUser) return;
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-      if (profile) {
-        setUser({ id: profile.id, name: profile.name, role: profile.role, teamId: profile.team_id });
+    if (!getToken()) return;
+    let cancelled = false;
+    api<{ user: AuthUser }>('/auth/me')
+      .then((res) => {
+        if (!cancelled) setUser(res.user);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setToken(null);
+          setUser(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [setUser]);
+
+  const loginAs = useCallback(
+    async (role: UserRole, options: LoginOptions = {}): Promise<LoginResult> => {
+      try {
+        const res = await api<{ token: string; user: AuthUser }>('/auth/login', {
+          method: 'POST',
+          json: { role, code: options.code, teamId: options.teamId, deviceId: getDeviceId() },
+        });
+        setToken(res.token);
+        setUser(res.user);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof ApiError) return { ok: false, error: err.message };
+        if (err instanceof NetworkError && role === 'citizen') {
+          // A citizen must always be able to reach the SOS button, even with
+          // no connection at all. This offline session can't read server data
+          // but can queue an SOS that is delivered once the network returns.
+          setToken(null);
+          setUser({ id: `cit-${getDeviceId()}`, name: 'Citizen', role: 'citizen', teamId: null, offline: true });
+          return { ok: true };
+        }
+        return { ok: false, error: 'Cannot reach the server. Check your connection and try again.' };
       }
-    });
-  }, [supabase]);
-
-  const loginAs = async (role: UserRole) => {
-    if (!supabase) {
-      setUser(mockUsers[role]);
-      return;
-    }
-
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      let authUserId = sessionData.session?.user?.id;
-
-      if (!authUserId) {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error || !data.user) throw error || new Error('Anonymous sign-in failed');
-        authUserId = data.user.id;
-      }
-
-      const profile = roleProfile[role];
-      const { error: upsertError } = await supabase
-        .from('profiles')
-        .upsert({ id: authUserId, role, name: profile.name, team_id: profile.teamId }, { onConflict: 'id' });
-
-      if (upsertError) throw upsertError;
-
-      setUser({ id: authUserId, name: profile.name, role, teamId: profile.teamId });
-    } catch (err) {
-      console.warn('[Auth] Supabase login failed, falling back to local mock session:', err);
-      setUser(mockUsers[role]);
-    }
-  };
-
-  const logout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
-    setUser(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, loginAs, logout, isSupabaseAuth: !!supabase }}>
-      {children}
-    </AuthContext.Provider>
+    },
+    [setUser]
   );
+
+  const ensureSession = useCallback(async (): Promise<boolean> => {
+    if (getToken()) return true;
+    if (!user || user.role !== 'citizen') return false;
+    try {
+      const res = await api<{ token: string; user: AuthUser }>('/auth/login', {
+        method: 'POST',
+        json: { role: 'citizen', deviceId: getDeviceId() },
+      });
+      setToken(res.token);
+      setUser(res.user);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [user, setUser]);
+
+  const logout = useCallback(async () => {
+    setToken(null);
+    setUser(null);
+  }, [setUser]);
+
+  return <AuthContext.Provider value={{ user, loginAs, logout, ensureSession }}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

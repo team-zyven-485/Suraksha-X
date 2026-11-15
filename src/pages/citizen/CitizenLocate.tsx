@@ -3,6 +3,7 @@ import { MapPin, LocateFixed, AlertCircle } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import { useDisaster } from '../../context/DisasterContext';
 import { CitizenLocationState } from './CitizenApp';
+import { useI18n } from '../../i18n';
 
 interface Props {
   location: CitizenLocationState;
@@ -11,6 +12,7 @@ interface Props {
 
 export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
   const { riskZones, selectedZone } = useDisaster();
+  const { t } = useI18n();
   const [isLocating, setIsLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +30,7 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
 
   const locateMe = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setError('Geolocation is not available in this browser.');
+      setError(t('loc.errNoGeo'));
       useDemoLocation();
       return;
     }
@@ -45,7 +47,7 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
         setError(null);
       },
       () => {
-        setError('Location permission denied or unavailable. Using demo location instead.');
+        setError(t('loc.errDenied'));
         setIsLocating(false);
         useDemoLocation();
       },
@@ -55,7 +57,7 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-bold font-mono text-ink">My Location</h2>
+      <h2 className="text-sm font-bold font-mono text-ink">{t('loc.title')}</h2>
 
       <button
         onClick={locateMe}
@@ -63,7 +65,7 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
         className="w-full py-3.5 rounded-xl bg-safe hover:bg-safe/90 disabled:opacity-60 text-white font-mono font-bold text-sm flex items-center justify-center gap-2 transition-colors"
       >
         <LocateFixed className="w-4 h-4" />
-        <span>{isLocating ? 'Locating…' : 'Locate Me'}</span>
+        <span>{isLocating ? t('loc.locating') : t('loc.locateMe')}</span>
       </button>
 
       {error && (
@@ -78,19 +80,19 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
           <div className="p-4 rounded-xl bg-surface border border-hairline space-y-2 font-mono text-xs">
             <div className="flex items-center gap-1.5 text-safe font-bold uppercase text-[11px]">
               <MapPin className="w-3.5 h-3.5" />
-              Location Detected {location.isDemo && <span className="text-warn">(Demo Location)</span>}
+              {t('loc.detected')} {location.isDemo && <span className="text-warn">{t('loc.demoLocation')}</span>}
             </div>
             <div className="grid grid-cols-3 gap-2 pt-1">
               <div>
-                <div className="text-ink-faint text-[10px]">LATITUDE</div>
+                <div className="text-ink-faint text-[10px]">{t('loc.latitude')}</div>
                 <div className="text-ink">{location.coords.lat.toFixed(5)}</div>
               </div>
               <div>
-                <div className="text-ink-faint text-[10px]">LONGITUDE</div>
+                <div className="text-ink-faint text-[10px]">{t('loc.longitude')}</div>
                 <div className="text-ink">{location.coords.lng.toFixed(5)}</div>
               </div>
               <div>
-                <div className="text-ink-faint text-[10px]">ACCURACY</div>
+                <div className="text-ink-faint text-[10px]">{t('loc.accuracy')}</div>
                 <div className="text-ink">{location.accuracy ? `±${Math.round(location.accuracy)}m` : '—'}</div>
               </div>
             </div>
@@ -107,16 +109,16 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
                 radius={10}
                 pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 0.5 }}
               >
-                <Popup>Your {location.isDemo ? 'demo' : 'current'} location</Popup>
+                <Popup>{location.isDemo ? t('loc.popupDemo') : t('loc.popupNow')}</Popup>
               </CircleMarker>
             </MapContainer>
           </div>
         </div>
       ) : (
         <div className="p-6 rounded-xl bg-surface border border-hairline text-center text-xs font-mono text-ink-faint">
-          Tap "Locate Me" to detect your position, or use a demo location for this scenario.
+          {t('loc.prompt')}
           <button onClick={useDemoLocation} className="block mx-auto mt-3 text-brand hover:text-brand underline">
-            Use Demo Location
+            {t('loc.useDemo')}
           </button>
         </div>
       )}

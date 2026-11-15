@@ -17,7 +17,7 @@ import { useSOS } from '../../context/SOSContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { useAuth } from '../../context/AuthContext';
 import { ZyvenLogo } from '../common/ZyvenLogo';
-import { isSupabaseConfigured } from '../../lib/supabaseClient';
+import { useServerHealth } from '../../lib/useServerHealth';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -38,6 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
   const { incidents } = useSOS();
   const { backendStatus, hazard } = useSatellite();
   const { user, logout } = useAuth();
+  const health = useServerHealth();
+  const healthOk = health === 'mongodb';
+  const healthLabel = { mongodb: 'DATABASE CONNECTED', memory: 'MEMORY MODE — NOT SAVED', offline: 'SERVER OFFLINE', checking: 'CHECKING…' }[health];
 
   const activeSOSCount = incidents.filter((i) => i.status !== 'CLOSED' && i.status !== 'RESCUED').length;
 
@@ -243,11 +246,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
         <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-paper-alt border border-hairline">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isSupabaseConfigured() ? 'bg-safe' : 'bg-warn'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSupabaseConfigured() ? 'bg-safe' : 'bg-warn'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${healthOk ? 'bg-safe' : 'bg-warn'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${healthOk ? 'bg-safe' : 'bg-warn'}`}></span>
             </span>
-            <span className={`text-[11px] font-mono font-medium ${isSupabaseConfigured() ? 'text-safe' : 'text-warn'}`}>
-              {isSupabaseConfigured() ? 'SYSTEM OPERATIONAL' : 'LOCAL DEMO MODE'}
+            <span className={`text-[11px] font-mono font-medium ${healthOk ? 'text-safe' : 'text-warn'}`}>
+              {healthLabel}
             </span>
           </div>
           <span className="text-[10px] font-mono text-ink-faint">v2.6.4</span>

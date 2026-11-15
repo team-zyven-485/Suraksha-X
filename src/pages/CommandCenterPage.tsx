@@ -16,6 +16,7 @@ import { useSatellite } from '../context/SatelliteContext';
 import { KpiCard } from '../components/common/KpiCard';
 import { DisasterMap } from '../components/map/DisasterMap';
 import { Badge } from '../components/common/Badge';
+import { WeatherCard } from '../components/common/WeatherCard';
 
 export const CommandCenterPage: React.FC = () => {
   const { hazard } = useSatellite();
@@ -53,6 +54,8 @@ export const CommandCenterPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <WeatherCard />
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-hairline pb-4">
         <div>

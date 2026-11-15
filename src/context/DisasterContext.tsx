@@ -97,8 +97,7 @@ export const DisasterProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [activePage, setActivePage] = useState<AppPage>('command-center');
   const [activeScenarioId, setActiveScenarioId] = useState<string>(DEFAULT_SCENARIO_ID);
   // Synchronous local defaults for first paint; loadScenarioData() below
-  // replaces these with the Supabase-backed values (falling back to the same
-  // local data if Supabase isn't configured yet).
+  // replaces these with the scenario's bundled data.
   const [scenarioMeta, setScenarioMeta] = useState<ScenarioMeta>(getScenario(DEFAULT_SCENARIO_ID).meta);
   const [demographics, setDemographics] = useState<DemographicSummary>(getScenario(DEFAULT_SCENARIO_ID).demographics);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>(getScenario(DEFAULT_SCENARIO_ID).analytics);
