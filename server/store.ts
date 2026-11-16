@@ -7,6 +7,7 @@
  * status) are single conditional updates, so two admins can never assign the
  * same team or the same incident twice.
  */
+import dns from 'dns';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import type { RescueTeam, SOSIncident, SOSStatus } from '../src/types/sos';
 import { initialRescueTeams } from '../src/data/rescueTeams';
@@ -200,12 +201,29 @@ class MongoStore implements Store {
   }
 }
 
+/**
+ * mongodb+srv:// URIs need a DNS SRV lookup. Some local DNS setups (a stub
+ * resolver on 127.0.0.1, certain VPNs/routers) refuse SRV queries even though
+ * the internet works, giving "querySrv ECONNREFUSED". If the system resolver
+ * can't answer, retry through public DNS for this process.
+ */
+export async function ensureSrvResolvable(uri: string): Promise<void> {
+  const m = uri.match(/^mongodb\+srv:\/\/(?:[^@]*@)?([^/?]+)/);
+  if (!m) return;
+  const host = `_mongodb._tcp.${m[1]}`;
+  const ok = await new Promise<boolean>((resolve) => dns.resolveSrv(host, (err) => resolve(!err)));
+  if (ok) return;
+  console.warn('[DB] System DNS could not resolve the Atlas SRV record; retrying through public DNS (8.8.8.8, 1.1.1.1).');
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
+
 export async function createStore(): Promise<Store> {
   const uri = process.env.MONGODB_URI?.trim();
   if (!uri) {
     console.warn('[DB] MONGODB_URI is not set — using the in-memory store. Data is lost when the server restarts.');
     return new MemoryStore();
   }
+  await ensureSrvResolvable(uri);
   const store = new MongoStore(uri, process.env.MONGODB_DB?.trim() || 'suraksha_x');
   try {
     await store.init();
