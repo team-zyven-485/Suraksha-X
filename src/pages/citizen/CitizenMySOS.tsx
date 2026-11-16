@@ -24,6 +24,7 @@ import { SOSStatus, SOSDisasterType } from '../../types/sos';
 import { CitizenLocationState } from './CitizenApp';
 import { useI18n } from '../../i18n';
 import { CitizenLiveTeam } from '../../components/live/CitizenLiveTeam';
+import { HazardSimulation } from '../../components/sim/HazardSimulation';
 import { getCurrentFix, FAILURE_KEY, LocationFailure } from '../../lib/geolocate';
 
 interface Props {
@@ -279,6 +280,8 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
           )}
 
           {assignedTeam && !isQueued && <CitizenLiveTeam incident={activeIncident} team={assignedTeam} />}
+
+          <HazardSimulation incident={activeIncident} audience="citizen" />
 
           {activeIncident.instructions && (
             <div className="p-4 rounded-xl bg-surface border border-hairline space-y-1.5 text-xs font-mono">

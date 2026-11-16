@@ -107,10 +107,10 @@ RESPONSE GUIDELINES:
       if (client) {
         // Multi-model resilience cascade: try available models in priority order
         const candidateModels = [
-          'gemini-2.5-flash',
-          'gemini-3.7-flash',
           'gemini-3.1-flash-lite',
+          'gemini-3.7-flash',
           'gemini-flash-latest',
+          'gemini-2.5-flash', // no longer available to new API keys; kept last in case yours still has access
         ];
 
         // Format conversation history for Gemini API

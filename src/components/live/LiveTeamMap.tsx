@@ -1,19 +1,22 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Popup } from 'react-leaflet';
+import { useFitBounds } from '../../lib/useFitBounds';
 import L from 'leaflet';
 import type { LatLng } from '../../lib/roadRoute';
 
 /** Fit the view when the situation changes (route replaced, team first appears), but not on every GPS tick, so the user can still pan. */
 const FitTo: React.FC<{ victim: LatLng; team: LatLng | null; route: [number, number][] | null }> = ({ victim, team, route }) => {
-  const map = useMap();
   const hasTeam = !!team;
-  useEffect(() => {
-    const pts: L.LatLngExpression[] = route && route.length > 1 ? route : [[victim.lat, victim.lng]];
-    if (team) pts.push([team.lat, team.lng]);
-    pts.push([victim.lat, victim.lng]);
-    map.fitBounds(L.latLngBounds(pts), { padding: [32, 32], maxZoom: 16, animate: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, hasTeam, victim.lat, victim.lng]);
+  useFitBounds(
+    () => {
+      const pts: L.LatLngExpression[] = route && route.length > 1 ? route : [[victim.lat, victim.lng]];
+      if (team) pts.push([team.lat, team.lng]);
+      pts.push([victim.lat, victim.lng]);
+      return L.latLngBounds(pts);
+    },
+    { padding: [32, 32], maxZoom: 16, animate: false },
+    [route, hasTeam, victim.lat, victim.lng]
+  );
   return null;
 };
 

@@ -16,6 +16,7 @@ import { useDisaster } from '../context/DisasterContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/common/Badge';
 import { LiveOpsMap } from '../components/live/LiveOpsMap';
+import { HazardSimulation } from '../components/sim/HazardSimulation';
 import { SOSIncident, RescuePriority, SOS_DISASTER_TYPE_LABELS } from '../types/sos';
 
 const requiredActionPresets = [
@@ -474,6 +475,10 @@ export const RescueControlPage: React.FC = () => {
                 Citizen SOS received from a {selectedIncident.priority === 'P1' ? 'critical red' : 'moderate risk'} zone.
               </div>
             </div>
+
+            {selectedIncident.status !== 'RESCUED' && selectedIncident.status !== 'CLOSED' && (
+              <HazardSimulation incident={selectedIncident} audience="staff" />
+            )}
 
             {selectedIncident.status !== 'RESCUED' && selectedIncident.status !== 'CLOSED' && (
               <div className="p-2.5 rounded bg-inset border border-hairline space-y-1.5">

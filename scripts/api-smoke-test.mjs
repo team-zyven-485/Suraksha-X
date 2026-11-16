@@ -158,6 +158,18 @@ check('a different citizen cannot see any team location', teamsForB.every((t) =>
 await new Promise((r) => setTimeout(r, 1600));
 check('a team can stop sharing (location cleared)', (await call('POST', '/teams/team-alpha/location', { token: tokRescue, body: { clear: true } })).status === 200 && !((await call('GET', '/teams', { token: tokAdmin })).json?.teams ?? []).find((t) => t.id === 'team-alpha')?.location);
 
+console.log('hazard simulation');
+const simA = await call('POST', `/sos/${inc.id}/simulation`, { token: tokA, body: {} });
+check('the citizen can request a simulation for their own SOS', simA.status === 200 && !!simA.json?.params && ['gemini', 'rule-based'].includes(simA.json?.engine));
+console.log(`       engine: ${simA.json?.engine}${simA.json?.model ? ` (${simA.json.model})` : ''}`);
+check('the simulation is validated: right hazard, bounded extent, allowed fields only', simA.json?.params?.hazard === 'FLOOD' && simA.json.params.lengthKm > 0 && simA.json.params.lengthKm <= 20 && simA.json.params.markers.length <= 6 && typeof simA.json.params.narrative === 'string');
+check('severity defaults from the incident priority', ['SEVERE', 'MODERATE', 'LOW'].includes(simA.json?.params?.severity));
+check("another citizen cannot simulate someone else's incident", (await call('POST', `/sos/${inc.id}/simulation`, { token: tokB, body: {} })).status === 404);
+check('admin can simulate any incident and choose a severity', (await call('POST', `/sos/${inc.id}/simulation`, { token: tokAdmin, body: { severity: 'EXTREME' } })).json?.params?.severity === 'EXTREME');
+check('an invalid severity is ignored, not trusted', ['SEVERE', 'MODERATE', 'LOW'].includes((await call('POST', `/sos/${inc.id}/simulation`, { token: tokAdmin, body: { severity: 'APOCALYPSE' } })).json?.params?.severity));
+check('simulation requires sign-in', (await call('POST', `/sos/${inc.id}/simulation`, { body: {} })).status === 401);
+check('unknown incident is a 404', (await call('POST', '/sos/SOS-NOPE0000/simulation', { token: tokAdmin, body: {} })).status === 404);
+
 console.log('routing');
 check('routing requires sign-in', (await call('GET', '/route?fromLat=26.14&fromLng=91.73&toLat=26.18&toLng=91.73')).status === 401);
 check('routing rejects bad coordinates', (await call('GET', '/route?fromLat=abc&fromLng=91.73&toLat=26.18&toLng=91.73', { token: tokA })).status === 400);

@@ -23,6 +23,7 @@ import { Badge } from '../../components/common/Badge';
 import { AppLogo } from '../../components/common/AppLogo';
 import { ToastContainer } from '../../components/common/Toast';
 import { RescueLivePanel } from '../../components/live/RescueLivePanel';
+import { HazardSimulation } from '../../components/sim/HazardSimulation';
 import { SOSStatus, SOS_DISASTER_TYPE_LABELS } from '../../types/sos';
 
 const statusBadgeVariant: Record<string, any> = {
@@ -262,6 +263,8 @@ export const RescueTeamApp: React.FC = () => {
 
             {/* Live tracking: real GPS (or labelled demo drive), real road route, ETA */}
             {team && <RescueLivePanel team={team} incident={activeIncident} />}
+
+            <HazardSimulation incident={activeIncident} audience="staff" />
 
             {routeEval && (
               <div className={`p-2.5 rounded-lg border flex items-center gap-2 text-[11px] font-mono ${

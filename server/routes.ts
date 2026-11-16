@@ -12,6 +12,9 @@ import {
 } from '../src/types/sos';
 import { initialRescueTeams } from '../src/data/rescueTeams';
 import { getRoadRoute } from './routing';
+import { generateSimParams } from './gemini';
+import { SEVERITIES, severityFromPriority, validateParams, type Severity } from '../src/shared/hazardSim';
+import { haversineKm, nearestZone } from '../src/shared/sosTriage';
 
 const CITIZEN_TTL = 60 * 60 * 24 * 7; // 7 days — a phone may be offline for a while
 const STAFF_TTL = 60 * 60 * 12; // 12 hours
@@ -379,6 +382,75 @@ export function createApiRouter(store: Store): Router {
         }
       }
       res.json({ incident: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Hazard scenario simulation for an incident: Gemini proposes bounded
+  // parameters, our code validates them (rule-based defaults fill any gap or a
+  // missing key). Cached per incident + severity so every viewer sees the same
+  // sketch and Gemini quota is spent once.
+  const simLimiter = rateLimit({ windowMs: 60_000, max: 10, keyPrefix: 'sim:', message: 'Too many simulation requests. Please wait a moment.' });
+  const simCache = new Map<string, { at: number; ttl: number; body: unknown }>();
+  const simInflight = new Map<string, Promise<unknown>>();
+  const SIM_TTL_MS = 60 * 60 * 1000;
+  const SIM_FALLBACK_TTL_MS = 2 * 60 * 1000; // a failed Gemini attempt is retried soon
+  const SIM_QUICK_WAIT_MS = 8000;
+
+  r.post('/sos/:id/simulation', requireRole(), simLimiter, async (req, res, next) => {
+    try {
+      const s = req.session!;
+      const incident = await store.getIncident(req.params.id);
+      // Citizens can only simulate their own incident; staff can simulate any.
+      if (!incident || (s.role === 'citizen' && incident.citizenId !== s.sub)) {
+        return res.status(404).json({ error: 'Incident not found' });
+      }
+      const requested = req.body?.severity;
+      const severity: Severity = SEVERITIES.includes(requested) ? requested : severityFromPriority(incident.priority);
+
+      const key = `${incident.id}|${severity}`;
+      const cached = simCache.get(key);
+      if (cached && Date.now() - cached.at < cached.ttl) return res.json(cached.body);
+
+      // Plain facts from the bundled sample scenario, only when the SOS is inside its coverage.
+      const scenario = scenarios[incident.scenarioId];
+      const context: string[] = [];
+      if (scenario) {
+        const zone = nearestZone(scenario.riskZones, incident.coordinates);
+        if (zone && haversineKm(zone.coordinates, incident.coordinates) <= 100) {
+          context.push(`Sample region: ${scenario.meta.region}, ${scenario.meta.state}`);
+          context.push(`Nearest sample zone: ${zone.name} (${zone.district}), risk ${zone.riskLevel}`);
+        }
+      }
+      context.push(`Reported hazard type: ${incident.hazard}`);
+
+      const buildBody = (generated: { raw: unknown; model: string } | null) => ({
+        params: validateParams(generated?.raw, incident.disasterType, severity, incident.coordinates),
+        engine: generated ? 'gemini' : 'rule-based',
+        model: generated?.model ?? null,
+        generatedAt: nowIso(),
+        disclaimer: 'Pure simulation. No real-time sensor, satellite, weather or terrain data was used.',
+      });
+
+      // Gemini can be slow or overloaded. Start (or join) the generation, give it a few
+      // seconds, and otherwise answer at once with the rule-based sketch while Gemini
+      // keeps working; the result is cached so the next request is upgraded.
+      let job = simInflight.get(key);
+      if (!job) {
+        job = generateSimParams({ hazard: incident.disasterType, severity, origin: incident.coordinates, context })
+          .then((generated) => {
+            const body = buildBody(generated);
+            if (simCache.size > 300) simCache.delete(simCache.keys().next().value as string);
+            simCache.set(key, { at: Date.now(), ttl: generated ? SIM_TTL_MS : SIM_FALLBACK_TTL_MS, body });
+            return body;
+          })
+          .finally(() => simInflight.delete(key));
+        simInflight.set(key, job);
+      }
+      const quick = await Promise.race([job, new Promise<null>((resolve) => setTimeout(() => resolve(null), SIM_QUICK_WAIT_MS))]);
+      if (quick) return res.json(quick);
+      return res.json({ ...buildBody(null), upgrading: true });
     } catch (e) {
       next(e);
     }

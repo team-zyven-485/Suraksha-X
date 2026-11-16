@@ -1,18 +1,14 @@
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Popup } from 'react-leaflet';
+import { useFitBounds } from '../../lib/useFitBounds';
 import L from 'leaflet';
 import { Radar } from 'lucide-react';
 import { useSOS } from '../../context/SOSContext';
 import { useNow } from '../../lib/liveTracking';
 
 const FitAll: React.FC<{ points: [number, number][]; signature: string }> = ({ points, signature }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (points.length === 0) return;
-    map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 14, animate: false });
-    // Re-fit only when the set of markers changes, not on every GPS tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  // Re-fit only when the set of markers changes, not on every GPS tick.
+  useFitBounds(() => (points.length ? L.latLngBounds(points) : null), { padding: [40, 40], maxZoom: 14, animate: false }, [signature]);
   return null;
 };
 
