@@ -167,7 +167,7 @@ export function generateCapXml(plan: RelocationPlan): string {
   <identifier>SURAKSHA-CAP-${plan.id}-${Date.now()}</identifier>
   <sender>Admin@suraksha-incident-command.gov.in</sender>
   <sent>${sentDate}</sent>
-  <status>Actual</status>
+  <status>Exercise</status>
   <msgType>Alert</msgType>
   <scope>Public</scope>
   <incidents>${plan.id}</incidents>

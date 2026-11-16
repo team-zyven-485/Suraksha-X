@@ -35,6 +35,8 @@ interface SOSContextType {
   queuedCount: number;
   isOnline: boolean;
   createSOS: (input: CreateSOSInput) => Promise<SOSIncident | null>;
+  /** Citizen: cancel own SOS before assignment. Admin: close as FALSE_ALARM / DUPLICATE / OTHER. */
+  closeSOS: (incidentId: string, reason?: 'FALSE_ALARM' | 'DUPLICATE' | 'OTHER') => Promise<boolean>;
   assignTeam: (incidentId: string, teamId: string, instructions: AssignTeamOptions) => Promise<boolean>;
   dispatchTeam: (incidentId: string) => Promise<void>;
   advanceStatus: (incidentId: string, status: SOSStatus) => Promise<void>;
@@ -261,7 +263,14 @@ export const SOSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return incident;
         } catch (err) {
           if (err instanceof ApiError) {
-            // The server said no (rate limit, bad data). Not a connectivity
+            // 409: this citizen already has an open SOS — show that one
+            // instead of failing (e.g. a second device or a double tap).
+            if (err.status === 409 && err.body?.incident) {
+              const existing = mapIncident(err.body.incident);
+              setServerIncidents((prev) => [existing, ...prev.filter((i) => i.id !== existing.id)]);
+              return existing;
+            }
+            // Any other refusal (rate limit, bad data) is not a connectivity
             // problem, so don't pretend it was sent.
             return null;
           }
@@ -316,6 +325,30 @@ export const SOSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [fetchAll]
   );
 
+  const closeSOS = useCallback(
+    async (incidentId: string, reason?: 'FALSE_ALARM' | 'DUPLICATE' | 'OTHER'): Promise<boolean> => {
+      // Still only on this device (offline queue): just drop it.
+      if (incidentId.startsWith('PENDING-')) {
+        updateQueue((q) => q.filter((x) => x.localIncident.id !== incidentId));
+        return true;
+      }
+      try {
+        const res = await api<{ incident: any }>(`/sos/${encodeURIComponent(incidentId)}/cancel`, {
+          method: 'POST',
+          json: reason ? { reason } : {},
+        });
+        applyUpdated(res.incident);
+        await fetchAll();
+        return true;
+      } catch (err) {
+        console.warn('[SOS] closeSOS failed:', (err as Error).message);
+        await fetchAll();
+        return false;
+      }
+    },
+    [fetchAll, updateQueue]
+  );
+
   const dispatchTeam = useCallback((incidentId: string) => advanceStatus(incidentId, 'DISPATCHED'), [advanceStatus]);
 
   // Incidents still waiting on this device appear first, until the server has them.
@@ -336,6 +369,7 @@ export const SOSProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         queuedCount: queue.length,
         isOnline,
         createSOS,
+        closeSOS,
         assignTeam,
         dispatchTeam,
         advanceStatus,

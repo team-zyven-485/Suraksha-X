@@ -37,7 +37,7 @@ const statusBadgeVariant: Record<string, any> = {
 };
 
 export const RescueControlPage: React.FC = () => {
-  const { incidents, rescueTeams, assignTeam, dispatchTeam } = useSOS();
+  const { incidents, rescueTeams, assignTeam, dispatchTeam, closeSOS } = useSOS();
   const { riskZones, addToast } = useDisaster();
   const { user } = useAuth();
   const [selectedIncident, setSelectedIncident] = useState<SOSIncident | null>(null);
@@ -471,6 +471,31 @@ export const RescueControlPage: React.FC = () => {
                 Citizen SOS received from a {selectedIncident.priority === 'P1' ? 'critical red' : 'moderate risk'} zone.
               </div>
             </div>
+
+            {selectedIncident.status !== 'RESCUED' && selectedIncident.status !== 'CLOSED' && (
+              <div className="p-2.5 rounded bg-inset border border-hairline space-y-1.5">
+                <div className="text-[10px] font-mono text-ink-faint uppercase">CLOSE WITHOUT RESCUE</div>
+                <div className="flex gap-2">
+                  {(['FALSE_ALARM', 'DUPLICATE'] as const).map((reason) => (
+                    <button
+                      key={reason}
+                      onClick={async () => {
+                        const ok = await closeSOS(selectedIncident.id, reason);
+                        addToast(
+                          ok ? 'info' : 'error',
+                          ok ? 'Incident Closed' : 'Could not close incident',
+                          ok ? `${selectedIncident.id} closed as ${reason.replace('_', ' ').toLowerCase()}. Any assigned team was released.` : 'Refresh and try again.'
+                        );
+                        if (ok) setSelectedIncident(null);
+                      }}
+                      className="px-2.5 py-1 rounded border border-hairline text-[11px] font-mono text-ink-soft hover:text-ink"
+                    >
+                      {reason === 'FALSE_ALARM' ? 'False alarm' : 'Duplicate'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5 pt-1">
               <div className="text-[10px] font-mono text-ink-faint uppercase">STATUS HISTORY</div>

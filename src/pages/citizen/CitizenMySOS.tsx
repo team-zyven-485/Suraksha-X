@@ -45,10 +45,12 @@ const disasterTypeOptions: { type: SOSDisasterType; icon: React.FC<{ className?:
 
 export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
   const { user } = useAuth();
-  const { createSOS, getTeamById, incidents } = useSOS();
+  const { createSOS, closeSOS, getTeamById, incidents } = useSOS();
   const { riskZones, scenarioMeta, addToast } = useDisaster();
   const { t } = useI18n();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [selectedDisasterType, setSelectedDisasterType] = useState<SOSDisasterType>(
@@ -64,6 +66,18 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
     ? myIncidents.find((i) => i.status === 'RESCUED' || i.status === 'CLOSED') || null
     : null;
   const isQueued = activeIncident?.syncState === 'QUEUED';
+  // Can only be withdrawn before a team is assigned; after that the citizen must call Rescue Control.
+  const canCancel =
+    !!activeIncident && !activeIncident.assignedTeamId && (isQueued || activeIncident.status === 'REQUESTED' || activeIncident.status === 'VERIFIED');
+
+  const handleCancel = async () => {
+    if (!activeIncident) return;
+    setIsCancelling(true);
+    const ok = await closeSOS(activeIncident.id);
+    setIsCancelling(false);
+    setConfirmCancel(false);
+    if (!ok) addToast('error', t('sos.cancelFailedTitle'), t('sos.cancelFailed'));
+  };
 
   const processingMessages = [
     t('sos.p1'),
@@ -238,6 +252,35 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
               )}
             </div>
           )}
+
+          {canCancel &&
+            (confirmCancel ? (
+              <div className="p-3 rounded-xl bg-warn-soft border border-warn/30 space-y-2 text-xs font-mono">
+                <div className="text-ink">{t('sos.cancelAsk')}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setConfirmCancel(false)}
+                    className="py-2 rounded-lg bg-paper-alt text-ink font-semibold"
+                  >
+                    {t('sos.cancelKeep')}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isCancelling}
+                    className="py-2 rounded-lg bg-critical text-white font-bold disabled:opacity-60"
+                  >
+                    {t('sos.cancelYes')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmCancel(true)}
+                className="w-full py-2 rounded-lg border border-hairline text-ink-soft hover:text-ink text-[11px] font-mono"
+              >
+                {t('sos.cancelBtn')}
+              </button>
+            ))}
         </div>
       )}
 

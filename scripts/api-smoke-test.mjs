@@ -48,6 +48,8 @@ async function call(method, path, { token, body } = {}) {
   return { status: res.status, json };
 }
 
+const RUN = Date.now().toString(36); // fresh citizens every run, so reruns against a real DB never collide
+
 const sos = (extra = {}) => ({
   scenarioId: 'flood-assam',
   coordinates: { lat: 26.185, lng: 91.735 },
@@ -73,10 +75,10 @@ const admin = await call('POST', '/auth/login', { body: { role: 'admin', code: A
 check('admin login with the right code works', admin.status === 200 && !!admin.json?.token, `(status ${admin.status}; are ADMIN_ACCESS_CODE/.env set?)`);
 const rescue = await call('POST', '/auth/login', { body: { role: 'rescue', code: RESCUE_CODE, teamId: 'team-alpha' } });
 check('rescue login with the right code works', rescue.status === 200 && !!rescue.json?.token);
-const citizenA = await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: 'smoke-device-aaaa1111' } });
-const citizenB = await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: 'smoke-device-bbbb2222' } });
+const citizenA = await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: `smoke-a-${RUN}-aaaa` } });
+const citizenB = await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: `smoke-b-${RUN}-bbbb` } });
 check('citizen login works without a code', citizenA.status === 200 && !!citizenA.json?.token);
-check('citizen identity is stable per device', (await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: 'smoke-device-aaaa1111' } })).json?.user?.id === citizenA.json?.user?.id);
+check('citizen identity is stable per device', (await call('POST', '/auth/login', { body: { role: 'citizen', deviceId: `smoke-a-${RUN}-aaaa` } })).json?.user?.id === citizenA.json?.user?.id);
 const tokA = citizenA.json?.token, tokB = citizenB.json?.token, tokAdmin = admin.json?.token, tokRescue = rescue.json?.token;
 
 const tampered = tokA ? tokA.slice(0, -3) + (tokA.endsWith('aaa') ? 'bbb' : 'aaa') : 'x';
@@ -103,6 +105,9 @@ check('server computes risk score itself', inc && inc.riskScore > 1);
 check('SOS is owned by the authenticated citizen, not the request body', inc?.citizenId === citizenA.json?.user?.id);
 const again = await call('POST', '/sos', { token: tokA, body: sos({ clientRequestId: reqId }) });
 check('re-sending the same clientRequestId does not duplicate', again.status === 200 && again.json?.duplicate === true && again.json?.incident?.id === inc?.id);
+const second_ = await call('POST', '/sos', { token: tokA, body: sos({ clientRequestId: 'smoke-second-' + RUN }) });
+check('a citizen cannot open a second SOS while one is active (409, returns the active one)', second_.status === 409 && second_.json?.incident?.id === inc?.id);
+check('SOS ids are long enough to avoid collisions', /^SOS-[0-9A-Z]{8}$/.test(inc?.id ?? ''));
 
 // ---- visibility
 console.log('visibility');
@@ -142,6 +147,31 @@ for (const next of ['DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'RESCUED
 const teams = (await call('GET', '/teams', { token: tokAdmin })).json?.teams ?? [];
 check('team is freed once the incident is RESCUED', teams.find((t) => t.id === 'team-alpha')?.status === 'AVAILABLE');
 check('status history was recorded', (await call('GET', '/sos', { token: tokA })).json?.incidents?.find((i) => i.id === inc.id)?.statusHistory?.length >= 7);
+
+// ---- closing without a rescue
+console.log('closing');
+const a2 = await call('POST', '/sos', { token: tokA, body: sos({ clientRequestId: 'smoke-a2-' + RUN }) });
+check('after RESCUED the citizen can raise a new SOS', a2.status === 201);
+const incA2 = a2.json?.incident;
+check("another citizen cannot cancel someone else's SOS", (await call('POST', `/sos/${incA2.id}/cancel`, { token: tokB, body: {} })).status === 404);
+const cancelled = await call('POST', `/sos/${incA2.id}/cancel`, { token: tokA, body: {} });
+check('a citizen can cancel their own unassigned SOS', cancelled.status === 200 && cancelled.json?.incident?.status === 'CLOSED' && cancelled.json?.incident?.closeReason === 'CANCELLED_BY_CITIZEN');
+check('a closed SOS cannot be cancelled twice', (await call('POST', `/sos/${incA2.id}/cancel`, { token: tokA, body: {} })).status === 409);
+const a3 = await call('POST', '/sos', { token: tokA, body: sos({ clientRequestId: 'smoke-a3-' + RUN }) });
+check('after cancelling, a new SOS is allowed', a3.status === 201);
+check('admin close needs a valid reason', (await call('POST', `/sos/${a3.json?.incident?.id}/cancel`, { token: tokAdmin, body: { reason: 'because' } })).status === 400);
+check('rescue staff cannot close incidents', (await call('POST', `/sos/${a3.json?.incident?.id}/cancel`, { token: tokRescue, body: { reason: 'FALSE_ALARM' } })).status === 403);
+const falseAlarm = await call('POST', `/sos/${a3.json?.incident?.id}/cancel`, { token: tokAdmin, body: { reason: 'FALSE_ALARM' } });
+check('admin can close an SOS as a false alarm', falseAlarm.status === 200 && falseAlarm.json?.incident?.closeReason === 'FALSE_ALARM');
+
+// admin closes an ASSIGNED incident -> its team is released
+const assignB = await call('POST', `/sos/${incB.id}/assign`, { token: tokAdmin, body: { teamId: 'team-delta', requiredAction: 'x', notes: '' } });
+check('admin can assign a team to the second citizen', assignB.status === 200);
+check('citizens cannot cancel once a team is assigned', (await call('POST', `/sos/${incB.id}/cancel`, { token: tokB, body: {} })).status === 409);
+const dup = await call('POST', `/sos/${incB.id}/cancel`, { token: tokAdmin, body: { reason: 'DUPLICATE' } });
+check('admin can close an assigned incident as a duplicate', dup.status === 200);
+const teamsAfter = (await call('GET', '/teams', { token: tokAdmin })).json?.teams ?? [];
+check('closing an assigned incident releases the team', teamsAfter.find((t) => t.id === 'team-delta')?.status === 'AVAILABLE');
 
 // ---- admin records & misc
 console.log('records');

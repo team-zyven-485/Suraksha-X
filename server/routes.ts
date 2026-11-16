@@ -30,10 +30,19 @@ const str = (v: unknown, max: number): string | null =>
   typeof v === 'string' && v.trim().length > 0 && v.length <= max ? v.trim() : null;
 const nowIso = () => new Date().toISOString();
 
+// Crockford-style alphabet: no I, L, O, U — easy to read out over a radio.
+const ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 function newIncidentId(): string {
-  // 30 bits of randomness, readable: SOS-7K3Q9A. (Date-based ids collide.)
-  return `SOS-${crypto.randomBytes(4).toString('hex').slice(0, 6).toUpperCase()}`;
+  // 8 chars x 5 bits = 40 bits (~1.1 trillion ids). Collisions are still
+  // possible in theory, so the insert below retries on a duplicate id.
+  const bytes = crypto.randomBytes(8);
+  let out = '';
+  for (let i = 0; i < 8; i++) out += ID_ALPHABET[bytes[i] & 31];
+  return `SOS-${out}`;
 }
+
+const OPEN_STATUSES: SOSStatus[] = ['REQUESTED', 'VERIFIED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS'];
+const ADMIN_CLOSE_REASONS = ['FALSE_ALARM', 'DUPLICATE', 'OTHER'];
 
 // Open-Meteo weather, cached so many dashboards don't hammer the free API.
 const weatherCache = new Map<string, { at: number; body: unknown }>();
@@ -159,6 +168,8 @@ export function createApiRouter(store: Store): Router {
       const created = nowIso();
       const doc: IncidentDoc = {
         id: newIncidentId(),
+        isOpen: true,
+        closeReason: null,
         citizenId: citizen.sub,
         citizenName: citizen.name,
         scenarioId: scenario.meta.id,
@@ -178,17 +189,31 @@ export function createApiRouter(store: Store): Router {
         clientRequestId: reqId,
       };
 
-      try {
-        await store.insertIncident(doc);
-      } catch (e: any) {
-        // Lost a race against a duplicate send of the same clientRequestId.
-        if (e?.code === 11000 && reqId) {
-          const existing = await store.findIncidentByClientRequest(citizen.sub, reqId);
-          if (existing) return res.status(200).json({ incident: existing, duplicate: true });
+      // The database enforces three uniqueness rules; tell them apart by the
+      // violated key: id (retry with a new id), clientRequestId (this exact
+      // request was already stored), or citizenId alone (already has an open SOS).
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await store.insertIncident(doc);
+          return res.status(201).json({ incident: doc });
+        } catch (e: any) {
+          if (e?.code !== 11000) throw e;
+          const key = Object.keys(e.keyPattern ?? {});
+          if (key.includes('clientRequestId') && reqId) {
+            const existing = await store.findIncidentByClientRequest(citizen.sub, reqId);
+            if (existing) return res.status(200).json({ incident: existing, duplicate: true });
+          }
+          if (key.length === 1 && key[0] === 'citizenId') {
+            const open = await store.findOpenIncident(citizen.sub);
+            return res.status(409).json({ error: 'You already have an active SOS', incident: open });
+          }
+          if (key.includes('id') && attempt < 5) {
+            doc.id = newIncidentId();
+            continue;
+          }
+          throw e;
         }
-        throw e;
       }
-      res.status(201).json({ incident: doc });
     } catch (e) {
       next(e);
     }
@@ -272,7 +297,7 @@ export function createApiRouter(store: Store): Router {
       const updated = await store.updateIncident(
         incident.id,
         { status: [incident.status], assignedTeamId: incident.assignedTeamId ?? null },
-        { status: next_ },
+        { status: next_, isOpen: next_ !== 'RESCUED' && next_ !== 'CLOSED' },
         { status: next_, timestamp: nowIso() }
       );
       if (!updated) return res.status(409).json({ error: 'The incident changed — refresh and try again' });
@@ -282,6 +307,48 @@ export function createApiRouter(store: Store): Router {
           await store.updateTeam(updated.assignedTeamId, { status: 'AVAILABLE', activeIncidentId: null });
         } else if (next_ === 'DISPATCHED' || next_ === 'EN_ROUTE') {
           await store.updateTeam(updated.assignedTeamId, { status: 'DISPATCHED' });
+        }
+      }
+      res.json({ incident: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Close an incident without a rescue. A citizen may cancel their OWN SOS
+  // before a team is assigned; an admin may close any open incident as a
+  // false alarm / duplicate / other. Frees the assigned team, if any.
+  r.post('/sos/:id/cancel', requireRole('citizen', 'admin'), async (req, res, next) => {
+    try {
+      const s = req.session!;
+      const incident = await store.getIncident(req.params.id);
+      if (!incident) return res.status(404).json({ error: 'Incident not found' });
+      if (!incident.isOpen) return res.status(409).json({ error: 'This incident is already closed' });
+
+      let reason: string;
+      if (s.role === 'citizen') {
+        if (incident.citizenId !== s.sub) return res.status(404).json({ error: 'Incident not found' });
+        if (incident.assignedTeamId) {
+          return res.status(409).json({ error: 'A rescue team is already assigned. Please contact Rescue Control.' });
+        }
+        reason = 'CANCELLED_BY_CITIZEN';
+      } else {
+        reason = String(req.body?.reason ?? '');
+        if (!ADMIN_CLOSE_REASONS.includes(reason)) return res.status(400).json({ error: 'Invalid close reason' });
+      }
+
+      const updated = await store.updateIncident(
+        incident.id,
+        { status: OPEN_STATUSES, assignedTeamId: incident.assignedTeamId ?? null },
+        { status: 'CLOSED', isOpen: false, closeReason: reason },
+        { status: 'CLOSED', timestamp: nowIso() }
+      );
+      if (!updated) return res.status(409).json({ error: 'The incident changed — refresh and try again' });
+
+      if (updated.assignedTeamId) {
+        const team = await store.getTeam(updated.assignedTeamId);
+        if (team?.activeIncidentId === updated.id) {
+          await store.updateTeam(team.id, { status: 'AVAILABLE', activeIncidentId: null });
         }
       }
       res.json({ incident: updated });

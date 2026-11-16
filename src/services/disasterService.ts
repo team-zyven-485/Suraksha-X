@@ -192,9 +192,9 @@ export const disasterService = {
           id: 'chk-1',
           task: `Notify local emergency response team & community leaders in ${zone.name}`,
           assignee: 'NDRF Quick Response Team Alpha',
-          status: 'COMPLETED',
+          status: 'PENDING',
           priority: 'CRITICAL',
-          estimatedTime: `Done (${new Date().toLocaleTimeString()})`,
+          estimatedTime: '5 min',
         },
         {
           id: 'chk-2',

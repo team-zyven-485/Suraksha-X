@@ -15,7 +15,20 @@ import { initialRescueTeams } from '../src/data/rescueTeams';
 export type IncidentDoc = Omit<SOSIncident, 'timestamp' | 'statusHistory'> & {
   createdAt: string; // ISO
   statusHistory: { status: SOSStatus; timestamp: string }[]; // ISO timestamps
+  /**
+   * True while the incident is unresolved. A unique index allows at most ONE
+   * open incident per citizen, enforced by the database so two simultaneous
+   * requests cannot both slip through.
+   */
+  isOpen: boolean;
+  /** Why an admin/citizen closed it without a rescue (FALSE_ALARM, DUPLICATE, CANCELLED_BY_CITIZEN…). */
+  closeReason?: string | null;
 };
+
+/** Mirrors MongoDB's duplicate-key error shape so callers handle both stores identically. */
+export function duplicateKeyError(keyPattern: Record<string, 1>): Error {
+  return Object.assign(new Error('E11000 duplicate key error'), { code: 11000, keyPattern });
+}
 
 export interface IncidentGuard {
   /** Only match if the current status is one of these. */
@@ -31,7 +44,9 @@ export interface Store {
   listIncidents(filter?: { citizenId?: string }): Promise<IncidentDoc[]>;
   getIncident(id: string): Promise<IncidentDoc | null>;
   findIncidentByClientRequest(citizenId: string, clientRequestId: string): Promise<IncidentDoc | null>;
+  /** Throws a duplicate-key error (code 11000) on a clash of id, clientRequestId, or the one-open-SOS rule. */
   insertIncident(doc: IncidentDoc): Promise<void>;
+  findOpenIncident(citizenId: string): Promise<IncidentDoc | null>;
   updateIncident(
     id: string,
     guard: IncidentGuard,
@@ -63,7 +78,7 @@ class MemoryStore implements Store {
 
   async listIncidents(filter?: { citizenId?: string }) {
     const rows = filter?.citizenId ? this.incidents.filter((i) => i.citizenId === filter.citizenId) : this.incidents;
-    return clone([...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    return clone([...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 500));
   }
   async getIncident(id: string) {
     const found = this.incidents.find((i) => i.id === id);
@@ -74,7 +89,21 @@ class MemoryStore implements Store {
     return found ? clone(found) : null;
   }
   async insertIncident(doc: IncidentDoc) {
+    if (this.incidents.some((i) => i.id === doc.id)) throw duplicateKeyError({ id: 1 });
+    if (
+      doc.clientRequestId &&
+      this.incidents.some((i) => i.citizenId === doc.citizenId && i.clientRequestId === doc.clientRequestId)
+    ) {
+      throw duplicateKeyError({ citizenId: 1, clientRequestId: 1 });
+    }
+    if (doc.isOpen && this.incidents.some((i) => i.citizenId === doc.citizenId && i.isOpen)) {
+      throw duplicateKeyError({ citizenId: 1 });
+    }
     this.incidents.push(clone(doc));
+  }
+  async findOpenIncident(citizenId: string) {
+    const found = this.incidents.find((i) => i.citizenId === citizenId && i.isOpen);
+    return found ? clone(found) : null;
   }
   async updateIncident(id: string, guard: IncidentGuard, set: Partial<IncidentDoc>, history: { status: SOSStatus; timestamp: string }) {
     const inc = this.incidents.find((i) => i.id === id);
@@ -138,6 +167,11 @@ class MongoStore implements Store {
       { citizenId: 1, clientRequestId: 1 },
       { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string' } } }
     );
+    // At most one OPEN incident per citizen (see IncidentDoc.isOpen).
+    await this.incidents.createIndex(
+      { citizenId: 1 },
+      { unique: true, partialFilterExpression: { isOpen: true }, name: 'one_open_sos_per_citizen' }
+    );
     await this.teams.createIndex({ id: 1 }, { unique: true });
     await this.plans.createIndex({ id: 1 }, { unique: true });
     await this.caps.createIndex({ identifier: 1 }, { unique: true });
@@ -169,6 +203,9 @@ class MongoStore implements Store {
   }
   async insertIncident(doc: IncidentDoc) {
     await this.incidents.insertOne({ ...doc } as any);
+  }
+  async findOpenIncident(citizenId: string) {
+    return (await this.incidents.findOne({ citizenId, isOpen: true }, this.noId)) as IncidentDoc | null;
   }
   async updateIncident(id: string, guard: IncidentGuard, set: Partial<IncidentDoc>, history: { status: SOSStatus; timestamp: string }) {
     const filter: Record<string, unknown> = { id };

@@ -20,7 +20,7 @@ copilot (Gemini, with a built-in rule-based fallback).
 | Hazard scenarios (flood, earthquake, cyclone, landslide, tsunami) | **Bundled sample data** for 5 regions — not live feeds. |
 | Satellite Intelligence | Sentinel-1 via Copernicus when credentials are set; otherwise clearly labelled **DEMO DATA**. |
 | Live traffic, IoT river sensors | **Not implemented.** Routes are scenario data plus satellite road-risk checks. |
-| CAP broadcast | Generates a CAP XML alert and logs it. It does **not** actually send SMS / radio / sirens. |
+| CAP broadcast | **Simulation.** Generates a CAP XML alert (status `Exercise`) and logs it. The UI is labelled as a simulation; it does **not** connect to any SMS / radio / siren / WhatsApp service. |
 
 ## Architecture
 
@@ -59,12 +59,15 @@ Atlas: add your IP (or `0.0.0.0/0` for a demo) under *Network Access*, and use a
 
 ```bash
 npm run lint        # type-check
+npm test            # 19 unit tests: triage rules, session tokens, access codes, rate limiting, store invariants
 npm run dev         # in one terminal
-npm run test:api    # in another: 45 end-to-end API checks (auth, roles, ownership, lifecycle, rate limits)
+npm run test:api    # in another: 59 end-to-end API checks (auth, roles, ownership, lifecycle, cancel/close, rate limits)
 ```
 
 `test:api` creates real incidents in whatever database the server uses — use a throwaway one
-(e.g. start the server with `MONGODB_DB=suraksha_test`).
+(e.g. start the server with `MONGODB_DB=suraksha_test`). It passes identically on the in-memory
+store and on MongoDB. GitHub Actions (`.github/workflows/ci.yml`) runs type-check, unit tests,
+build and the API tests on every push.
 
 ## Production
 
@@ -89,3 +92,7 @@ uvicorn app.main:app --reload --port 8000
 
 Leave the Copernicus credentials blank to run in DEMO DATA mode. Set `ALLOWED_ORIGINS` to your
 deployed frontend URL, and `VITE_API_BASE_URL` (frontend, at build time) to the deployed service.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

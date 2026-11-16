@@ -9,6 +9,12 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'sos.cancelBtn': "Cancel this SOS",
+  'sos.cancelAsk': "Cancel your SOS? Rescue teams will no longer be alerted.",
+  'sos.cancelYes': "Yes, cancel SOS",
+  'sos.cancelKeep': "Keep SOS",
+  'sos.cancelFailedTitle': "Could not cancel",
+  'sos.cancelFailed': "A rescue team may already be assigned. Please contact Rescue Control.",
   'loc.errDenied': "Location permission was denied. Allow location for this site in your browser settings (the lock icon next to the address), then tap Locate Me again.",
   'loc.errTimeout': "Finding your location took too long. Move near a window or turn on Wi-Fi/GPS and try again.",
   'loc.errUnavailable': "Your device could not determine its location. Turn on Location services (Windows: Settings > Privacy > Location) and try again.",
@@ -171,6 +177,12 @@ const en: Dict = {
 };
 
 const hi: Dict = {
+  'sos.cancelBtn': "यह SOS रद्द करें",
+  'sos.cancelAsk': "क्या आप SOS रद्द करना चाहते हैं? रेस्क्यू टीमों को अब सूचित नहीं किया जाएगा।",
+  'sos.cancelYes': "हाँ, SOS रद्द करें",
+  'sos.cancelKeep': "SOS रहने दें",
+  'sos.cancelFailedTitle': "रद्द नहीं हो सका",
+  'sos.cancelFailed': "संभव है कि रेस्क्यू टीम पहले ही नियुक्त हो चुकी है। कृपया रेस्क्यू कंट्रोल से संपर्क करें।",
   'loc.errDenied': "स्थान की अनुमति नहीं दी गई। ब्राउज़र सेटिंग (पता-पट्टी के ताले के आइकन) में इस साइट के लिए स्थान की अनुमति दें, फिर \"मेरा स्थान खोजें\" दोबारा दबाएँ।",
   'loc.errTimeout': "आपका स्थान खोजने में बहुत समय लगा। खिड़की के पास जाएँ या Wi-Fi/GPS चालू करके फिर कोशिश करें।",
   'loc.errUnavailable': "आपका डिवाइस अपना स्थान नहीं पता कर सका। स्थान सेवाएँ चालू करें (Windows: सेटिंग > गोपनीयता > स्थान) और फिर कोशिश करें।",
@@ -333,6 +345,12 @@ const hi: Dict = {
 };
 
 const mr: Dict = {
+  'sos.cancelBtn': "हा SOS रद्द करा",
+  'sos.cancelAsk': "तुमचा SOS रद्द करायचा? रेस्क्यू टीमना यापुढे कळवले जाणार नाही.",
+  'sos.cancelYes': "होय, SOS रद्द करा",
+  'sos.cancelKeep': "SOS ठेवा",
+  'sos.cancelFailedTitle': "रद्द करता आले नाही",
+  'sos.cancelFailed': "कदाचित रेस्क्यू टीम आधीच नेमली गेली आहे. कृपया रेस्क्यू कंट्रोलशी संपर्क साधा.",
   'loc.errDenied': "स्थानाची परवानगी नाकारली गेली. ब्राउझर सेटिंग्जमध्ये (पत्त्याजवळील कुलूप चिन्ह) या साइटसाठी स्थानाची परवानगी द्या, मग \"माझे स्थान शोधा\" पुन्हा दाबा.",
   'loc.errTimeout': "तुमचे स्थान शोधायला खूप वेळ लागला. खिडकीजवळ जा किंवा Wi-Fi/GPS चालू करून पुन्हा प्रयत्न करा.",
   'loc.errUnavailable': "तुमचे डिव्हाइस स्थान ठरवू शकले नाही. स्थान सेवा चालू करा (Windows: सेटिंग्ज > गोपनीयता > स्थान) आणि पुन्हा प्रयत्न करा.",

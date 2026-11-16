@@ -14,7 +14,7 @@ export class NetworkError extends Error {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public body?: any) {
     super(message);
     this.name = 'ApiError';
   }
@@ -62,13 +62,14 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
 
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
+    let body: any;
     try {
-      const body = await res.json();
+      body = await res.json();
       if (body?.error) message = body.error;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, body);
   }
   return (await res.json()) as T;
 }

@@ -189,7 +189,7 @@ RESPONSE GUIDELINES:
 
         fallbackReply = `### 📋 OFFICIAL DISASTER RELOCATION DIRECTIVE
 **Incident Command Protocol #PLAN-${Date.now().toString().slice(-6)}**
-**Authorized Under Admin Incident Command Protocol**
+**DRAFT — pending Admin authorization**
 
 - **Scenario:** ${scenario?.name || 'Active Disaster Scenario'} (${scenario?.category || ''})
 - **Target Zone:** ${zoneName} (${zone?.priority || 'P1'} — Risk Score ${zone?.riskScore ?? '—'}/100)

@@ -253,7 +253,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
               {healthLabel}
             </span>
           </div>
-          <span className="text-[10px] font-mono text-ink-faint">v2.6.4</span>
+          <span className="text-[10px] font-mono text-ink-faint">v{__APP_VERSION__}</span>
         </div>
 
         <div className="flex items-center gap-2.5 px-2 py-1">
