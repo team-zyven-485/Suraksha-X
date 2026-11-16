@@ -362,5 +362,58 @@ export function createApiRouter(store: Store): Router {
     }
   });
 
+  // ---- NASA EONET: live open natural events worldwide (no API key needed) ----
+  const EONET_TTL_MS = 15 * 60 * 1000;
+  let eonetCache: { at: number; body: unknown } | null = null;
+
+  const centroid = (geom: any): [number, number] | null => {
+    // EONET coordinates are [lng, lat]; polygons are rings of such points.
+    if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) return [geom.coordinates[1], geom.coordinates[0]];
+    if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates?.[0]) && geom.coordinates[0].length > 0) {
+      const ring: number[][] = geom.coordinates[0];
+      const lat = ring.reduce((n, c) => n + c[1], 0) / ring.length;
+      const lng = ring.reduce((n, c) => n + c[0], 0) / ring.length;
+      return [lat, lng];
+    }
+    return null;
+  };
+
+  r.get('/events', async (_req, res) => {
+    if (eonetCache && Date.now() - eonetCache.at < EONET_TTL_MS) return res.json(eonetCache.body);
+    try {
+      const upstream = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=200&days=30', {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!upstream.ok) throw new Error(`EONET ${upstream.status}`);
+      const data: any = await upstream.json();
+      const events = (data.events ?? [])
+        .map((e: any) => {
+          const geoms: any[] = e.geometry ?? [];
+          const latest = geoms[geoms.length - 1];
+          const point = centroid(latest);
+          if (!point || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return null;
+          return {
+            id: String(e.id),
+            title: String(e.title ?? 'Untitled event'),
+            categoryId: String(e.categories?.[0]?.id ?? 'other'),
+            category: String(e.categories?.[0]?.title ?? 'Other'),
+            lat: point[0],
+            lng: point[1],
+            date: latest?.date ?? null,
+            link: typeof e.link === 'string' && e.link.startsWith('https://') ? e.link : null,
+          };
+        })
+        .filter(Boolean);
+      const body = { available: true, source: 'NASA EONET', fetchedAt: nowIso(), events };
+      eonetCache = { at: Date.now(), body };
+      res.json(body);
+    } catch (err) {
+      console.warn('[EONET] upstream unavailable:', (err as Error).message);
+      // Serve slightly stale data rather than nothing, if we have it.
+      if (eonetCache) return res.json({ ...(eonetCache.body as object), stale: true });
+      res.json({ available: false, source: 'NASA EONET', events: [] });
+    }
+  });
+
   return r;
 }

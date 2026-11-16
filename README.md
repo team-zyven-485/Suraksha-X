@@ -14,6 +14,8 @@ copilot (Gemini, with a built-in rule-based fallback).
 | Offline SOS | **Real.** App opens offline (service worker). An SOS raised with no connection is stored on the device and sent automatically when the connection returns (idempotent — never duplicated). Limit: it needs *some* connectivity to be delivered; there is no satellite/mesh link. |
 | Languages | **Real.** English, Hindi, Marathi for the Citizen app and role screen. Admin / Rescue screens, zone names and route instructions are English. |
 | Live weather | **Real.** Current conditions + 3-day rain forecast from Open-Meteo (free, no key). Shows "unavailable" instead of guessing if the feed is down. |
+| Live natural events | **Real.** Open wildfires, storms, floods, volcanoes etc. worldwide from NASA EONET (no key), listed nearest-first with distance and plotted on the map. |
+| NASA satellite imagery overlay | **Real.** Daily MODIS true-color, MODIS flood/water (bands 7-2-1) and IMERG rainfall layers from NASA GIBS on the Command Center map. Imagery is global and a day old; it is a visual aid, not an automated flood detector. |
 | Risk / priority scoring, team recommendation | **Rule-based formulas** over scenario data (distance, zone risk level, specialization). Not a trained ML model. |
 | Hazard scenarios (flood, earthquake, cyclone, landslide, tsunami) | **Bundled sample data** for 5 regions — not live feeds. |
 | Satellite Intelligence | Sentinel-1 via Copernicus when credentials are set; otherwise clearly labelled **DEMO DATA**. |

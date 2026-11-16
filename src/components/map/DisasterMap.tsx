@@ -39,6 +39,8 @@ import { useDisaster } from '../../context/DisasterContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { RiskZone, ReliefCentre, EvacuationRoute, BlockedRoad, RoadSegment, MapLayerState } from '../../types';
 import { Badge } from '../common/Badge';
+import { NasaMapLayers, NasaMapControls, NasaOverlay } from './NasaLayers';
+import { useNaturalEvents } from '../../lib/useNaturalEvents';
 
 // Helper to re-center and stabilize Leaflet map programmatically
 const MapController: React.FC<{ center: [number, number]; zoom: number }> = ({
@@ -198,6 +200,9 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
   heightClass = 'h-[480px] lg:h-[620px]',
   showAllControls = true,
 }) => {
+  const [nasaOverlay, setNasaOverlay] = useState<NasaOverlay>('none');
+  const [showEvents, setShowEvents] = useState(false);
+  const { events: naturalEvents, status: eventsStatus } = useNaturalEvents();
   const {
     riskZones = [],
     reliefCentres = [],
@@ -326,6 +331,8 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
             maxZoom={18}
           />
         )}
+
+        <NasaMapLayers overlay={nasaOverlay} showEvents={showEvents} events={naturalEvents} />
 
         {/* 1. Hazard Zone Polygons */}
         {mapLayers.hazardZones &&
@@ -723,6 +730,15 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
             </Marker>
           ))}
       </MapContainer>
+
+      <NasaMapControls
+        overlay={nasaOverlay}
+        setOverlay={setNasaOverlay}
+        showEvents={showEvents}
+        setShowEvents={setShowEvents}
+        eventCount={naturalEvents.length}
+        eventsStatus={eventsStatus}
+      />
 
       {/* Floating Tactical GIS Controls Bar (Top Left) */}
       <div className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 bg-surface border border-hairline p-1 rounded-md shadow-2xl backdrop-blur-md">
