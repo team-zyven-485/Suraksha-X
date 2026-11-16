@@ -2,14 +2,33 @@ import { GoogleGenAI } from '@google/genai';
 import { ALLOWED_EMOJI, allowedRanges, hazardSpec, type LatLngT, type Severity } from '../src/shared/hazardSim';
 import type { SOSDisasterType } from '../src/types/sos';
 
-// Fast, available models first. gemini-2.5-flash now returns 404 for new users, so it is last and
-// permanently skipped once it has failed that way.
-const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
-const deadModels = new Set<string>();
-let lastGoodModel: string | null = null; // try the model that worked last time first, to keep latency low
+// Best model first. Pro models (gemini-3.1-pro, gemini-pro-latest) have NO free-tier quota and
+// gemini-2.5-pro / 2.5-flash are closed to new keys, so the newest Flash models lead, with
+// Flash-Lite as the last resort. (Probed against a free-tier key; see README.)
+export const GEMINI_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+];
+const deadModels = new Set<string>(); // 404: gone for this key, never retry
+const cooldownUntil = new Map<string, number>(); // overloaded / rate limited: skip for a while
+const COOLDOWN_OVERLOAD_MS = 90_000;
+const COOLDOWN_QUOTA_MS = 10 * 60_000;
+
+export const modelAvailable = (m: string) => !deadModels.has(m) && (cooldownUntil.get(m) ?? 0) < Date.now();
+export function noteModelFailure(model: string, message: string) {
+  if (/"code":\s*404|NOT_FOUND/.test(message)) deadModels.add(model);
+  else if (/429|RESOURCE_EXHAUSTED/.test(message)) cooldownUntil.set(model, Date.now() + COOLDOWN_QUOTA_MS);
+  else cooldownUntil.set(model, Date.now() + COOLDOWN_OVERLOAD_MS); // 503, timeouts
+}
 // Generous: this runs in the background. The route answers with the rule-based sketch after a few
 // seconds and upgrades the result when Gemini finally replies.
-const PER_MODEL_TIMEOUT_MS = 10_000;
+const PER_MODEL_TIMEOUT_MS = 20_000;
+const HEDGE_MS = 3_500; // start the next-best model if the current one has not answered by then
 const TOTAL_BUDGET_MS = 28_000;
 
 export function geminiConfigured(): boolean {
@@ -24,7 +43,7 @@ function getClient(): GoogleGenAI | null {
   return client;
 }
 
-const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> => {
+export const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> => {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<T>((_, rej) => {
     timer = setTimeout(() => rej(new Error('timeout')), ms);
@@ -78,31 +97,75 @@ Keep every value physically plausible for this hazard and severity.
 If this hazard is implausible at this kind of location (for example a tsunami far from any coast), say so plainly in the first assumption instead of pretending otherwise.`;
 }
 
-/** Ask Gemini for scenario parameters. Returns null if Gemini is not configured or every model fails. */
+/**
+ * Ask Gemini for scenario parameters. Returns null if Gemini is not configured or every model fails.
+ *
+ * Staggered ("hedged") attempts: the best healthy model starts first; if it has not answered within
+ * HEDGE_MS — or it fails — the next-best starts too, and the first valid answer wins. This keeps the
+ * quality of the newest model when it is healthy without waiting on it when it is overloaded.
+ */
 export async function generateSimParams(req: SimRequest): Promise<{ raw: unknown; model: string } | null> {
   const ai = getClient();
   if (!ai) return null;
-  const order = (lastGoodModel ? [lastGoodModel, ...MODELS.filter((m) => m !== lastGoodModel)] : MODELS).filter((m) => !deadModels.has(m));
-  const started = Date.now();
-  for (const model of order) {
-    if (Date.now() - started > TOTAL_BUDGET_MS) break;
-    try {
-      const response = await withTimeout(
+  const order = GEMINI_MODELS.filter(modelAvailable);
+  if (order.length === 0) return null;
+  const prompt = buildPrompt(req);
+
+  return new Promise((resolve) => {
+    let done = false;
+    let next = 0;
+    let running = 0;
+    let hedgeTimer: ReturnType<typeof setTimeout> | null = null;
+    const inflight = new Map<string, number>(); // model -> its preference rank, while still waiting
+
+    const finish = (result: { raw: unknown; model: string } | null) => {
+      if (done) return;
+      done = true;
+      // A higher-preference model that lost the race is evidently slow or overloaded right now:
+      // let it sit out a short cooldown so the next request does not wait on it again.
+      if (result) {
+        const winnerRank = order.indexOf(result.model);
+        for (const [model, rank] of inflight) if (rank < winnerRank) noteModelFailure(model, 'timeout (lost the race)');
+      }
+      if (hedgeTimer) clearTimeout(hedgeTimer);
+      clearTimeout(budgetTimer);
+      resolve(result);
+    };
+    const budgetTimer = setTimeout(() => finish(null), TOTAL_BUDGET_MS);
+
+    const startNext = () => {
+      if (done) return;
+      if (hedgeTimer) clearTimeout(hedgeTimer);
+      if (next >= order.length) {
+        if (running === 0) finish(null);
+        return;
+      }
+      const model = order[next++];
+      running++;
+      inflight.set(model, next - 1);
+      hedgeTimer = setTimeout(startNext, HEDGE_MS);
+      withTimeout(
         ai.models.generateContent({
           model,
-          contents: [{ role: 'user', parts: [{ text: buildPrompt(req) }] }],
-          config: { systemInstruction: SYSTEM, temperature: 0.4, maxOutputTokens: 1200, responseMimeType: 'application/json' },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: { systemInstruction: SYSTEM, temperature: 0.4, maxOutputTokens: 4096, responseMimeType: 'application/json' },
         }),
-        Math.min(PER_MODEL_TIMEOUT_MS, Math.max(2000, TOTAL_BUDGET_MS - (Date.now() - started)))
-      );
-      const raw = extractJson(response.text ?? '');
-      lastGoodModel = model;
-      return { raw, model };
-    } catch (err) {
-      const msg = String((err as Error)?.message ?? err);
-      if (/"code":\s*404|NOT_FOUND/.test(msg)) deadModels.add(model);
-      console.warn(`[Sim] ${model} failed: ${msg.slice(0, 100)}`);
-    }
-  }
-  return null;
+        PER_MODEL_TIMEOUT_MS
+      )
+        .then((response) => {
+          const raw = extractJson(response.text ?? '');
+          inflight.delete(model);
+          finish({ raw, model });
+        })
+        .catch((err) => {
+          const msg = String((err as Error)?.message ?? err);
+          inflight.delete(model);
+          noteModelFailure(model, msg);
+          console.warn(`[Sim] ${model} failed: ${msg.slice(0, 100)}`);
+          running--;
+          startNext(); // do not wait for the hedge timer: try the next model now
+        });
+    };
+    startNext();
+  });
 }

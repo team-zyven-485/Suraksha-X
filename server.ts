@@ -5,6 +5,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { createStore } from './server/store';
+import { GEMINI_MODELS, modelAvailable, noteModelFailure, withTimeout } from './server/gemini';
 import { createApiRouter } from './server/routes';
 import { attachSession, requireRole, securityHeaders } from './server/security';
 
@@ -106,12 +107,8 @@ RESPONSE GUIDELINES:
 
       if (client) {
         // Multi-model resilience cascade: try available models in priority order
-        const candidateModels = [
-          'gemini-3.1-flash-lite',
-          'gemini-3.7-flash',
-          'gemini-flash-latest',
-          'gemini-2.5-flash', // no longer available to new API keys; kept last in case yours still has access
-        ];
+        // Newest healthy Flash model first; models that recently failed sit out a cooldown.
+        const candidateModels = GEMINI_MODELS.filter(modelAvailable);
 
         // Format conversation history for Gemini API
         const contents: any[] = [];
@@ -138,15 +135,15 @@ RESPONSE GUIDELINES:
         for (const modelName of candidateModels) {
           try {
             // Attempt generation with current candidate model
-            const response = await client.models.generateContent({
+            const response = await withTimeout(client.models.generateContent({
               model: modelName,
               contents,
               config: {
                 systemInstruction: systemPrompt,
                 temperature: 0.3,
-                maxOutputTokens: 1000,
+                maxOutputTokens: 2048,
               },
-            });
+            }), 12_000);
 
             const replyText = response.text || 'Operational response received from SURAKSHA-X intelligence core.';
             return res.json({
@@ -163,6 +160,7 @@ RESPONSE GUIDELINES:
               errorMsg.includes('UNAVAILABLE') ||
               errorMsg.includes('RESOURCE_EXHAUSTED');
 
+            noteModelFailure(modelName, errorMsg);
             console.warn(`[Gemini API Warning - ${modelName} failed]: ${errorMsg.slice(0, 120)}... trying next model in cascade.`);
 
             // If it's a transient 503 or 429, pause 300ms before next candidate model

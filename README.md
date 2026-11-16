@@ -83,6 +83,10 @@ Deploy to a host that runs a persistent Node process (Render, Railway, a VM). Se
 environment variables in the host's dashboard, plus `NODE_ENV=production` and `TRUST_PROXY=1`
 when behind the host's proxy. Offline support requires HTTPS (or localhost).
 
+## Which Gemini models are used
+
+Probed against a **free-tier** key: the Pro models (`gemini-3.1-pro-preview`, `gemini-pro-latest`) have **no free quota** (HTTP 429), and `gemini-2.5-pro` / `2.5-flash` are closed to new keys. So the app prefers the newest Flash models, in order: `3.8-flash`, `3.7-flash`, `3.6-flash`, `3.5-flash`, `3-flash-preview`, then Flash-Lite. A model that is overloaded or rate-limited sits out a short cooldown, and for the hazard simulation the next-best model is started in parallel if the first has not answered within a few seconds (first valid answer wins). With a billing-enabled key you can add a Pro model at the top of `GEMINI_MODELS` in `server/gemini.ts`.
+
 ## Satellite service (optional)
 
 ```bash
