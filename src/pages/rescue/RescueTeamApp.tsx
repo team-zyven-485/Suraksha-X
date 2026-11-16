@@ -20,7 +20,7 @@ import { useSOS } from '../../context/SOSContext';
 import { useDisaster } from '../../context/DisasterContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { Badge } from '../../components/common/Badge';
-import { ZyvenLogo } from '../../components/common/ZyvenLogo';
+import { AppLogo } from '../../components/common/AppLogo';
 import { ToastContainer } from '../../components/common/Toast';
 import { SOSStatus, SOS_DISASTER_TYPE_LABELS } from '../../types/sos';
 
@@ -75,7 +75,7 @@ export const RescueTeamApp: React.FC = () => {
       <header className="h-14 bg-surface border-b border-hairline px-4 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-brand-soft border border-brand/20 flex items-center justify-center p-1">
-            <ZyvenLogo variant="icon" size={22} />
+            <AppLogo variant="icon" size={22} />
           </div>
           <div>
             <div className="text-sm font-bold font-mono text-ink leading-none">SURAKSHA-X</div>

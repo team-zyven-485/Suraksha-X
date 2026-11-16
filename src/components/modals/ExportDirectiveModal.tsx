@@ -21,7 +21,7 @@ import {
   generateCapXml,
   generateCsvManifest,
 } from '../../utils/exportUtils';
-import { ZyvenLogo } from '../common/ZyvenLogo';
+import { AppLogo } from '../common/AppLogo';
 
 interface ExportDirectiveModalProps {
   plan: RelocationPlan | null;
@@ -307,7 +307,7 @@ export const ExportDirectiveModal: React.FC<ExportDirectiveModalProps> = ({
               {/* Signoff */}
               <div className="border-t border-slate-200 pt-4 flex items-center justify-between text-[11px] text-ink-faint font-mono">
                 <div>AUTHENTICATED BY: Admin (Incident Commander Alpha)</div>
-                <div>SURAKSHA-X PLATFORM • TEAM ZYVEN</div>
+                <div>SURAKSHA-X PLATFORM</div>
               </div>
             </div>
           )}

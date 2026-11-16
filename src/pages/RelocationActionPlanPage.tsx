@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useDisaster } from '../context/DisasterContext';
 import { Badge } from '../components/common/Badge';
-import { ZyvenLogo } from '../components/common/ZyvenLogo';
+import { AppLogo } from '../components/common/AppLogo';
 import { ExportDirectiveModal } from '../components/modals/ExportDirectiveModal';
 import { CapBroadcastModal } from '../components/modals/CapBroadcastModal';
 import { persistRelocationPlan } from '../lib/persistence';
@@ -132,7 +132,7 @@ export const RelocationActionPlanPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-hairline pb-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <ZyvenLogo variant="horizontal" size="sm" showText={true} />
+            <AppLogo variant="horizontal" size="sm" showText={true} />
             <span className="text-ink-faint">•</span>
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${isAuthorized ? 'bg-critical animate-ping' : 'bg-warn'}`}></span>

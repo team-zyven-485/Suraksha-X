@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldAlert, UserRound, Radio, ChevronRight, Lock, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ZyvenLogo } from '../components/common/ZyvenLogo';
+import { AppLogo } from '../components/common/AppLogo';
 import { LanguageSwitcher, useI18n } from '../i18n';
 import { initialRescueTeams } from '../data/rescueTeams';
 import type { UserRole } from '../types/sos';
@@ -60,7 +60,7 @@ export const RoleSelectPage: React.FC = () => {
 
       <div className="flex items-center gap-3 mb-2">
         <div className="w-12 h-12 rounded-lg bg-brand-soft border border-brand/20 flex items-center justify-center shadow-sm p-1.5">
-          <ZyvenLogo variant="icon" size={38} />
+          <AppLogo variant="icon" size={38} />
         </div>
         <div>
           <div className="text-xl font-bold font-mono tracking-wider text-ink">SURAKSHA-X</div>

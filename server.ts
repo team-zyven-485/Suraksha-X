@@ -86,7 +86,7 @@ async function startServer() {
       const route = context?.selectedRoute;
       const blockedRoadsList: any[] = Array.isArray(context?.blockedRoadsDetail) ? context.blockedRoadsDetail : [];
 
-      const systemPrompt = `You are SURAKSHA-X AI Assistant, an elite disaster intelligence and relocation decision-support AI copilot built by Team ZYVEN for the Smart India Hackathon (SIH26191 — Multi-Hazard Relocation System).
+      const systemPrompt = `You are SURAKSHA-X AI Assistant, an elite disaster intelligence and relocation decision-support AI copilot for a multi-hazard relocation system.
 
 You assist Admin, incident commanders, NDRF response teams, and civil administrators in making real-time, life-saving evacuation decisions.
 

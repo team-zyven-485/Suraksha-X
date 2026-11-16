@@ -16,7 +16,7 @@ import { useDisaster, AppPage } from '../../context/DisasterContext';
 import { useSOS } from '../../context/SOSContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { useAuth } from '../../context/AuthContext';
-import { ZyvenLogo } from '../common/ZyvenLogo';
+import { AppLogo } from '../common/AppLogo';
 import { useServerHealth } from '../../lib/useServerHealth';
 
 interface SidebarProps {
@@ -169,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
       <div className="p-4 border-b border-hairline">
         <div className="flex items-center gap-3">
           <div className="relative w-10 h-10 rounded-lg bg-brand-soft border border-brand/20 flex items-center justify-center p-1">
-            <ZyvenLogo variant="icon" size={32} />
+            <AppLogo variant="icon" size={32} />
             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-safe border-2 border-surface" />
           </div>
 
@@ -178,9 +178,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
               <span className="text-base font-bold font-mono tracking-wider text-ink">
                 SURAKSHA-X
               </span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <ZyvenLogo variant="horizontal" size="xs" showText={true} />
             </div>
           </div>
         </div>
