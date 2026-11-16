@@ -9,6 +9,9 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'sos.locFailedTitle': "Couldn't get your location",
+  'sos.retry': "Try again",
+  'sos.sendDemo': "Send with a demo location (testing only)",
   'live.title': "Rescue team on the way",
   'live.simulated': "DEMO — simulated GPS",
   'live.waiting': "Waiting for the team to share its location…",
@@ -187,6 +190,9 @@ const en: Dict = {
 };
 
 const hi: Dict = {
+  'sos.locFailedTitle': "आपका स्थान नहीं मिल सका",
+  'sos.retry': "फिर कोशिश करें",
+  'sos.sendDemo': "डेमो स्थान के साथ भेजें (केवल परीक्षण)",
   'live.title': "रेस्क्यू टीम रास्ते में है",
   'live.simulated': "डेमो — नकली GPS",
   'live.waiting': "टीम के अपना स्थान साझा करने की प्रतीक्षा…",
@@ -365,6 +371,9 @@ const hi: Dict = {
 };
 
 const mr: Dict = {
+  'sos.locFailedTitle': "तुमचे स्थान मिळाले नाही",
+  'sos.retry': "पुन्हा प्रयत्न करा",
+  'sos.sendDemo': "डेमो स्थानासह पाठवा (फक्त चाचणी)",
   'live.title': "रेस्क्यू टीम मार्गावर आहे",
   'live.simulated': "डेमो — बनावट GPS",
   'live.waiting': "टीमने आपले स्थान शेअर करण्याची प्रतीक्षा…",

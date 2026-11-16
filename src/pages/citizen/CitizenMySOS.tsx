@@ -24,6 +24,7 @@ import { SOSStatus, SOSDisasterType } from '../../types/sos';
 import { CitizenLocationState } from './CitizenApp';
 import { useI18n } from '../../i18n';
 import { CitizenLiveTeam } from '../../components/live/CitizenLiveTeam';
+import { getCurrentFix, FAILURE_KEY, LocationFailure } from '../../lib/geolocate';
 
 interface Props {
   location: CitizenLocationState;
@@ -54,6 +55,7 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
+  const [locationProblem, setLocationProblem] = useState<LocationFailure | null>(null);
   const [selectedDisasterType, setSelectedDisasterType] = useState<SOSDisasterType>(
     scenarioMeta.disasterType as SOSDisasterType
   );
@@ -88,23 +90,40 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
     t('sos.p5'),
   ];
 
-  const handleSendSOS = async () => {
+  const handleSendSOS = async (opts: { allowDemo?: boolean } = {}) => {
     setShowConfirm(false);
+    setLocationProblem(null);
     setIsProcessing(true);
+    setProcessingStep(0);
 
-    let coords = location.coords;
-    let isDemo = location.isDemo;
-
-    if (!coords) {
-      const fallbackZone = [...riskZones].sort((a, b) => b.riskScore - a.riskScore)[0];
-      if (fallbackZone) {
-        coords = { lat: fallbackZone.coordinates.lat, lng: fallbackZone.coordinates.lng };
+    // Always ask the device for the CURRENT position first — never reuse a
+    // demo location the user may have picked earlier.
+    let coords: { lat: number; lng: number } | null = null;
+    let isDemo = false;
+    const fix = await getCurrentFix();
+    if (fix.ok) {
+      coords = fix.coords;
+      setLocation({ coords: fix.coords, accuracy: fix.accuracy, isDemo: false });
+    } else if (location.coords && !location.isDemo) {
+      coords = location.coords; // fall back to the last REAL position we already had
+    } else if (opts.allowDemo) {
+      // Only when the user explicitly chose "send with a demo location" (testing).
+      const demoZone = [...riskZones].sort((a, b) => b.riskScore - a.riskScore)[0];
+      if (demoZone) {
+        coords = { lat: demoZone.coordinates.lat, lng: demoZone.coordinates.lng };
         isDemo = true;
         setLocation({ coords, accuracy: null, isDemo: true });
       }
     }
 
-    for (let i = 0; i < processingMessages.length; i++) {
+    if (!coords) {
+      // Rescuers must not be dispatched to a made-up place: stop and let the citizen decide.
+      setIsProcessing(false);
+      setLocationProblem('reason' in fix ? fix.reason : 'unavailable');
+      return;
+    }
+
+    for (let i = 1; i < processingMessages.length; i++) {
       setProcessingStep(i);
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
@@ -145,6 +164,23 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
                   status: lastResolvedIncident.status === 'RESCUED' ? t('sos.rescuedWord') : t('sos.closedWord'),
                 })}
               </span>
+            </div>
+          )}
+          {locationProblem && (
+            <div className="p-3.5 rounded-xl bg-warn-soft border border-warn/30 space-y-2.5 text-xs font-mono">
+              <div className="font-bold text-warn uppercase text-[11px]">{t('sos.locFailedTitle')}</div>
+              <div className="text-ink leading-relaxed">{t(FAILURE_KEY[locationProblem])}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button onClick={() => handleSendSOS()} className="py-2 rounded-lg bg-critical text-white font-bold">
+                  {t('sos.retry')}
+                </button>
+                <button
+                  onClick={() => handleSendSOS({ allowDemo: true })}
+                  className="py-2 rounded-lg border border-hairline text-ink-soft hover:text-ink"
+                >
+                  {t('sos.sendDemo')}
+                </button>
+              </div>
             </div>
           )}
           <button
@@ -331,7 +367,7 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
                 {t('sos.cancel')}
               </button>
               <button
-                onClick={handleSendSOS}
+                onClick={() => handleSendSOS()}
                 className="py-2.5 rounded-lg bg-critical hover:bg-critical/90 text-white text-xs font-mono font-bold"
               >
                 {t('sos.send')}

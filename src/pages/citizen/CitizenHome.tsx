@@ -29,11 +29,15 @@ export const CitizenHome: React.FC<Props> = ({ location, onNavigate }) => {
   // risk, not just the district's single worst-case zone — showing a
   // specific "Risk: CRITICAL" figure next to "Your Location: Not detected"
   // would falsely imply a personalized assessment we haven't made.
-  const nearestZone = location.coords
+  const closest = location.coords
     ? [...riskZones].sort(
         (a, b) => haversineKm(a.coordinates, location.coords!) - haversineKm(b.coordinates, location.coords!)
       )[0]
     : null;
+  const closestKm = closest && location.coords ? haversineKm(closest.coordinates, location.coords) : null;
+  // A real position far from every sample hazard zone must not be assigned to one of them.
+  const outsideCoverage = closestKm !== null && closestKm > 100;
+  const nearestZone = outsideCoverage ? null : closest;
   const displayZone = nearestZone || worstZone;
   const recommendedShelter = [...reliefCentres].sort((a, b) => {
     const aScore = a.safetyScore * 0.4 + (a.available > 0 ? 30 : 0) + (1 / (a.distanceKm || 10)) * 30;
@@ -56,7 +60,7 @@ export const CitizenHome: React.FC<Props> = ({ location, onNavigate }) => {
           <div className="text-[10px] font-mono uppercase tracking-wider opacity-80">
             {nearestZone ? t('home.yourStatus') : t('home.districtOverview')}
           </div>
-          {!nearestZone && (
+          {!nearestZone && !location.coords && (
             <button
               onClick={() => onNavigate('locate')}
               className="text-[10px] font-mono underline opacity-90 hover:opacity-100"
@@ -95,7 +99,7 @@ export const CitizenHome: React.FC<Props> = ({ location, onNavigate }) => {
 
         {!nearestZone && (
           <p className="text-[10px] font-mono opacity-70 leading-relaxed border-t border-current/20 pt-2">
-            {t('home.noLocationNote')}
+            {outsideCoverage ? t('loc.outside', { km: Math.round(closestKm!) }) : t('home.noLocationNote')}
           </p>
         )}
       </div>

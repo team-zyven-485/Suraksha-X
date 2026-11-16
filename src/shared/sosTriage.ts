@@ -95,6 +95,9 @@ export function vulnerabilityTagsFor(zone: RiskZone | null): string[] {
   return tags;
 }
 
+/** Beyond this distance from every known hazard zone, an SOS is treated as outside the monitored area. */
+export const MAX_ZONE_DISTANCE_KM = 100;
+
 export interface SOSTriageResult {
   zoneId: string | null;
   zoneName: string;
@@ -114,12 +117,17 @@ export function triageSOS(input: {
   /** Shown as the location when no hazard zone is known for the scenario. */
   fallbackRegion: string;
 }): SOSTriageResult {
-  const zone = nearestZone(input.zones, input.coordinates);
+  const nearest = nearestZone(input.zones, input.coordinates);
+  // The bundled hazard zones only cover specific regions. A real location far
+  // from all of them must not inherit some distant zone's name and risk score.
+  const outside = !!nearest && haversineKm(nearest.coordinates, input.coordinates) > MAX_ZONE_DISTANCE_KM;
+  const zone = outside ? null : nearest;
+  const unmapped = `Outside monitored zones (${input.coordinates.lat.toFixed(3)}, ${input.coordinates.lng.toFixed(3)})`;
   const recommended = recommendTeam(input.teams, input.disasterType);
   return {
     zoneId: zone?.id ?? null,
-    zoneName: zone?.name ?? input.fallbackRegion,
-    location: zone?.name ?? input.fallbackRegion,
+    zoneName: zone?.name ?? (outside ? unmapped : input.fallbackRegion),
+    location: zone?.name ?? (outside ? unmapped : input.fallbackRegion),
     riskScore: zone?.riskScore ?? 50,
     vulnerabilityTags: vulnerabilityTagsFor(zone),
     affectedZones: findAffectedZones(input.zones, input.coordinates, input.disasterType),

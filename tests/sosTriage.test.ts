@@ -92,3 +92,20 @@ test('triageSOS with no zones falls back to the region and a P2 default', () => 
   assert.equal(r.riskScore, 50);
   assert.equal(r.priority, 'P2');
 });
+
+test('triageSOS: a real location far from every hazard zone does not borrow a distant zone', () => {
+  const pune = { lat: 18.5204, lng: 73.8567 }; // ~1,900 km from the Assam sample zones
+  const r = triageSOS({
+    zones: flood.riskZones,
+    teams: teams(),
+    coordinates: pune,
+    disasterType: 'FLOOD',
+    fallbackRegion: flood.meta.region,
+  });
+  assert.equal(r.zoneId, null);
+  assert.match(r.location, /^Outside monitored zones \(18\.520, 73\.857\)$/);
+  assert.equal(r.riskScore, 50);
+  assert.equal(r.priority, 'P2');
+  assert.deepEqual(r.affectedZones, []);
+  assert.ok(r.recommendedTeamId); // a team is still recommended
+});
