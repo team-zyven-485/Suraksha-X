@@ -3,6 +3,7 @@ import { MapPin, LocateFixed, AlertCircle } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import { useDisaster } from '../../context/DisasterContext';
 import { CitizenLocationState } from './CitizenApp';
+import { haversineKm } from '../../shared/sosTriage';
 import { useI18n } from '../../i18n';
 
 interface Props {
@@ -28,32 +29,63 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
     setError(null);
   };
 
+  // Never silently swap in a demo location: if the real position can't be
+  // read, say exactly why and let the user choose the demo location themselves.
   const locateMe = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setError(t('loc.errNoGeo'));
-      useDemoLocation();
+      return;
+    }
+    if (!window.isSecureContext) {
+      setError(t('loc.errInsecure'));
       return;
     }
 
     setIsLocating(true);
+    setError(null);
+
+    const onSuccess = (pos: GeolocationPosition) => {
+      setLocation({
+        coords: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+        accuracy: pos.coords.accuracy,
+        isDemo: false,
+      });
+      setIsLocating(false);
+    };
+    const onFail = (err: GeolocationPositionError) => {
+      setIsLocating(false);
+      setError(
+        err.code === err.PERMISSION_DENIED
+          ? t('loc.errDenied')
+          : err.code === err.TIMEOUT
+          ? t('loc.errTimeout')
+          : t('loc.errUnavailable')
+      );
+    };
+
+    // Phones have GPS (high accuracy); most laptops/desktops do not and need
+    // the coarser Wi-Fi/network lookup, so fall back to that before giving up.
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({
-          coords: { lat: pos.coords.latitude, lng: pos.coords.longitude },
-          accuracy: pos.coords.accuracy,
-          isDemo: false,
+      onSuccess,
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) return onFail(err);
+        navigator.geolocation.getCurrentPosition(onSuccess, onFail, {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 60000,
         });
-        setIsLocating(false);
-        setError(null);
-      },
-      () => {
-        setError(t('loc.errDenied'));
-        setIsLocating(false);
-        useDemoLocation();
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   };
+
+  // The bundled hazard scenarios cover specific regions. If the real position
+  // is far from the active one, say so instead of implying the zone data applies.
+  const nearestZoneKm =
+    location.coords && !location.isDemo && riskZones.length > 0
+      ? Math.min(...riskZones.map((z) => haversineKm(z.coordinates, location.coords!)))
+      : null;
+  const outsideCoverage = nearestZoneKm !== null && nearestZoneKm > 100;
 
   return (
     <div className="space-y-4">
@@ -72,6 +104,13 @@ export const CitizenLocate: React.FC<Props> = ({ location, setLocation }) => {
         <div className="p-3 rounded-lg bg-warn-soft border border-warn/30 flex items-start gap-2 text-xs text-warn">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {outsideCoverage && (
+        <div className="p-3 rounded-lg bg-warn-soft border border-warn/30 flex items-start gap-2 text-xs text-warn">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t('loc.outside', { km: Math.round(nearestZoneKm!) })}</span>
         </div>
       )}
 

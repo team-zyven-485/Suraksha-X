@@ -9,6 +9,11 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'loc.errDenied': "Location permission was denied. Allow location for this site in your browser settings (the lock icon next to the address), then tap Locate Me again.",
+  'loc.errTimeout': "Finding your location took too long. Move near a window or turn on Wi-Fi/GPS and try again.",
+  'loc.errUnavailable': "Your device could not determine its location. Turn on Location services (Windows: Settings > Privacy > Location) and try again.",
+  'loc.errInsecure': "Location only works on a secure (https) page or on localhost.",
+  'loc.outside': "Your real location is about {km} km from the monitored hazard region, so the zone, risk and shelters shown are for that region, not your actual surroundings.",
   'home.weather': 'Live Weather',
   'home.weatherNA': 'Live weather unavailable right now.',
   'app.tagline': 'Emergency Assistance',
@@ -62,7 +67,6 @@ const en: Dict = {
   'loc.locateMe': 'Locate Me',
   'loc.locating': 'Locating…',
   'loc.errNoGeo': 'Geolocation is not available in this browser.',
-  'loc.errDenied': 'Location permission denied or unavailable. Using demo location instead.',
   'loc.detected': 'Location Detected',
   'loc.demoLocation': '(Demo Location)',
   'loc.latitude': 'LATITUDE',
@@ -167,6 +171,11 @@ const en: Dict = {
 };
 
 const hi: Dict = {
+  'loc.errDenied': "स्थान की अनुमति नहीं दी गई। ब्राउज़र सेटिंग (पता-पट्टी के ताले के आइकन) में इस साइट के लिए स्थान की अनुमति दें, फिर \"मेरा स्थान खोजें\" दोबारा दबाएँ।",
+  'loc.errTimeout': "आपका स्थान खोजने में बहुत समय लगा। खिड़की के पास जाएँ या Wi-Fi/GPS चालू करके फिर कोशिश करें।",
+  'loc.errUnavailable': "आपका डिवाइस अपना स्थान नहीं पता कर सका। स्थान सेवाएँ चालू करें (Windows: सेटिंग > गोपनीयता > स्थान) और फिर कोशिश करें।",
+  'loc.errInsecure': "स्थान केवल सुरक्षित (https) पेज या localhost पर काम करता है।",
+  'loc.outside': "आपका वास्तविक स्थान निगरानी वाले खतरा-क्षेत्र से लगभग {km} किमी दूर है, इसलिए दिखाया गया क्षेत्र, जोखिम और आश्रय उसी क्षेत्र के हैं, आपके आसपास के नहीं।",
   'home.weather': 'मौसम (लाइव)',
   'home.weatherNA': 'लाइव मौसम अभी उपलब्ध नहीं है।',
   'app.tagline': 'आपातकालीन सहायता',
@@ -220,7 +229,6 @@ const hi: Dict = {
   'loc.locateMe': 'मेरा स्थान खोजें',
   'loc.locating': 'स्थान खोजा जा रहा है…',
   'loc.errNoGeo': 'इस ब्राउज़र में स्थान सेवा उपलब्ध नहीं है।',
-  'loc.errDenied': 'स्थान की अनुमति नहीं मिली या उपलब्ध नहीं है। डेमो स्थान का उपयोग किया जा रहा है।',
   'loc.detected': 'स्थान मिल गया',
   'loc.demoLocation': '(डेमो स्थान)',
   'loc.latitude': 'अक्षांश',
@@ -325,6 +333,11 @@ const hi: Dict = {
 };
 
 const mr: Dict = {
+  'loc.errDenied': "स्थानाची परवानगी नाकारली गेली. ब्राउझर सेटिंग्जमध्ये (पत्त्याजवळील कुलूप चिन्ह) या साइटसाठी स्थानाची परवानगी द्या, मग \"माझे स्थान शोधा\" पुन्हा दाबा.",
+  'loc.errTimeout': "तुमचे स्थान शोधायला खूप वेळ लागला. खिडकीजवळ जा किंवा Wi-Fi/GPS चालू करून पुन्हा प्रयत्न करा.",
+  'loc.errUnavailable': "तुमचे डिव्हाइस स्थान ठरवू शकले नाही. स्थान सेवा चालू करा (Windows: सेटिंग्ज > गोपनीयता > स्थान) आणि पुन्हा प्रयत्न करा.",
+  'loc.errInsecure': "स्थान फक्त सुरक्षित (https) पानावर किंवा localhost वर काम करते.",
+  'loc.outside': "तुमचे प्रत्यक्ष स्थान निरीक्षणाखालील धोक्याच्या क्षेत्रापासून सुमारे {km} किमी दूर आहे, म्हणून दाखवलेला विभाग, धोका आणि निवारे त्या क्षेत्राचे आहेत, तुमच्या सभोवतालचे नाहीत.",
   'home.weather': 'हवामान (लाइव्ह)',
   'home.weatherNA': 'लाइव्ह हवामान सध्या उपलब्ध नाही.',
   'app.tagline': 'आपत्कालीन मदत',
@@ -378,7 +391,6 @@ const mr: Dict = {
   'loc.locateMe': 'माझे स्थान शोधा',
   'loc.locating': 'स्थान शोधत आहे…',
   'loc.errNoGeo': 'या ब्राउझरमध्ये स्थान सेवा उपलब्ध नाही.',
-  'loc.errDenied': 'स्थानाची परवानगी नाकारली किंवा उपलब्ध नाही. डेमो स्थान वापरले जात आहे.',
   'loc.detected': 'स्थान सापडले',
   'loc.demoLocation': '(डेमो स्थान)',
   'loc.latitude': 'अक्षांश',

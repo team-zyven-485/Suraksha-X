@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "node -e \"for (const d of ['dist']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
-    "test:api": "node scripts/api-smoke-test.mjs"
+    "test:api": "node scripts/api-smoke-test.mjs",
+    "satellite": "backend.venvScriptspython.exe -m uvicorn app.main:app --app-dir backend --port 8000"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
