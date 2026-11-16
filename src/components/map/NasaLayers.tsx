@@ -1,5 +1,5 @@
-import React from 'react';
-import { TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import React, { useEffect } from 'react';
+import { TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { Satellite, Radar } from 'lucide-react';
 import { NaturalEvent, eventColor } from '../../lib/useNaturalEvents';
 
@@ -53,6 +53,18 @@ export const NasaMapLayers: React.FC<{ overlay: NasaOverlay; showEvents: boolean
 }) => {
   const cfg = overlay !== 'none' ? OVERLAYS[overlay] : null;
   const date = gibsDate();
+  const map = useMap();
+
+  // NASA imagery is coarse (MODIS ~250 m, rainfall ~10 km). At the district
+  // zoom (13) it is just a few blurry pixels, so pull the view out to a level
+  // where it is actually readable when an overlay is switched on.
+  useEffect(() => {
+    if (!cfg) return;
+    const ideal = overlay === 'rain' ? 5 : 8;
+    if (map.getZoom() > ideal) map.setZoom(ideal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlay]);
+
   return (
     <>
       {cfg && (
@@ -64,6 +76,9 @@ export const NasaMapLayers: React.FC<{ overlay: NasaOverlay; showEvents: boolean
           maxZoom={18}
           opacity={cfg.opacity}
           zIndex={250}
+          keepBuffer={1}
+          updateWhenZooming={false}
+          updateWhenIdle={true}
         />
       )}
       {showEvents &&

@@ -65,7 +65,7 @@ const MapController: React.FC<{ center: [number, number]; zoom: number }> = ({
 };
 
 // 1. Risk Zone Center Icon
-const createRiskZoneIcon = (zone: RiskZone, isSelected: boolean) => {
+const makeRiskZoneIcon = (zone: RiskZone, isSelected: boolean) => {
   const colors = {
     CRITICAL: '#C62828',
     HIGH: '#D97706',
@@ -99,11 +99,11 @@ const createRiskZoneIcon = (zone: RiskZone, isSelected: boolean) => {
 };
 
 // 2. Population Cluster Icon
-const createPopulationClusterIcon = (zone: RiskZone) => {
+const makePopulationClusterIcon = (zone: RiskZone) => {
   const isHighDensity = zone.population > 2500;
   const html = `
     <div class="relative flex items-center justify-center cursor-pointer">
-      <div class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-300 shadow-lg flex items-center gap-1 font-mono text-[9px] font-semibold backdrop-blur-sm ${
+      <div class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-300 shadow-lg flex items-center gap-1 font-mono text-[9px] font-semibold ${
         isHighDensity ? 'ring-1 ring-sky-400' : ''
       }">
         <svg class="w-2.5 h-2.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,12 +123,12 @@ const createPopulationClusterIcon = (zone: RiskZone) => {
 };
 
 // 3. Vulnerability Indicator Icon
-const createVulnerabilityIcon = (zone: RiskZone) => {
+const makeVulnerabilityIcon = (zone: RiskZone) => {
   const isSevere = zone.vulnerablePopulation > 600;
   const html = `
     <div class="relative flex items-center justify-center cursor-pointer">
-      <div class="px-2 py-0.5 rounded bg-warn-soft text-warn border border-warn/30 shadow-lg flex items-center gap-1 font-mono text-[9px] font-bold backdrop-blur-sm ${
-        isSevere ? 'animate-pulse ring-1 ring-warn' : ''
+      <div class="px-2 py-0.5 rounded bg-warn-soft text-warn border border-warn/30 shadow-lg flex items-center gap-1 font-mono text-[9px] font-bold ${
+        isSevere ? 'ring-1 ring-warn' : ''
       }">
         <span class="text-warn">⚠️</span>
         <span>${zone.vulnerablePopulation} vuln</span>
@@ -145,7 +145,7 @@ const createVulnerabilityIcon = (zone: RiskZone) => {
 };
 
 // 4. Shelter Icon
-const createShelterIcon = (shelter: ReliefCentre, isSelected: boolean) => {
+const makeShelterIcon = (shelter: ReliefCentre, isSelected: boolean) => {
   const isAvailable = shelter.status === 'AVAILABLE';
   const isFull = shelter.status === 'FULL';
   const borderColor = isAvailable ? '#15803D' : isFull ? '#C62828' : '#D97706';
@@ -171,10 +171,10 @@ const createShelterIcon = (shelter: ReliefCentre, isSelected: boolean) => {
 };
 
 // 5. Blockage Icon
-const createBlockageIcon = (road: BlockedRoad) => {
+const makeBlockageIcon = (road: BlockedRoad) => {
   const html = `
     <div class="relative flex items-center justify-center">
-      <div class="p-1 rounded bg-critical text-white shadow-lg border border-critical/30 animate-bounce">
+      <div class="p-1 rounded bg-critical text-white shadow-lg border border-critical/30">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
@@ -190,6 +190,28 @@ const createBlockageIcon = (road: BlockedRoad) => {
     iconAnchor: [12, 12],
   });
 };
+
+// Reuse the same icon object while its inputs are unchanged. Without this
+// every re-render (toasts, polling, hover…) swapped ~50 markers' DOM nodes.
+const iconCache = new Map<string, L.DivIcon>();
+const cachedIcon = (key: string, make: () => L.DivIcon): L.DivIcon => {
+  let icon = iconCache.get(key);
+  if (!icon) {
+    icon = make();
+    iconCache.set(key, icon);
+  }
+  return icon;
+};
+const createRiskZoneIcon = (zone: RiskZone, isSelected: boolean) =>
+  cachedIcon(`risk|${zone.id}|${zone.name}|${zone.riskLevel}|${zone.riskScore}|${isSelected}`, () => makeRiskZoneIcon(zone, isSelected));
+const createPopulationClusterIcon = (zone: RiskZone) =>
+  cachedIcon(`pop|${zone.id}|${zone.population}`, () => makePopulationClusterIcon(zone));
+const createVulnerabilityIcon = (zone: RiskZone) =>
+  cachedIcon(`vuln|${zone.id}|${zone.vulnerablePopulation}`, () => makeVulnerabilityIcon(zone));
+const createShelterIcon = (shelter: ReliefCentre, isSelected: boolean) =>
+  cachedIcon(`shelter|${shelter.id}|${shelter.code}|${shelter.status}|${shelter.available}|${isSelected}`, () => makeShelterIcon(shelter, isSelected));
+const createBlockageIcon = (road: BlockedRoad) =>
+  cachedIcon(`block|${road.id}`, () => makeBlockageIcon(road));
 
 interface DisasterMapProps {
   heightClass?: string;
@@ -295,7 +317,7 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
   return (
     <div
       id="gis-map-container"
-      className={`relative w-full rounded-lg border border-hairline overflow-hidden bg-paper shadow-2xl transition-all ${
+      className={`relative w-full rounded-lg border border-hairline overflow-hidden bg-paper shadow-2xl ${
         isFullscreen ? 'fixed inset-4 z-50 h-[calc(100vh-2rem)]' : heightClass
       }`}
     >
@@ -305,6 +327,8 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
         scrollWheelZoom={true}
         className="w-full h-full tactical-map-tiles"
         zoomControl={false}
+        preferCanvas={true}
+        zoomAnimation={true}
       >
         <MapController center={mapCenter} zoom={zoomLevel} />
 
@@ -741,7 +765,7 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
       />
 
       {/* Floating Tactical GIS Controls Bar (Top Left) */}
-      <div className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 bg-surface border border-hairline p-1 rounded-md shadow-2xl backdrop-blur-md">
+      <div className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 bg-surface border border-hairline p-1 rounded-md shadow-2xl">
         {/* Layer Controls Button */}
         <button
           onClick={() => setIsLayerControlOpen(!isLayerControlOpen)}
@@ -819,7 +843,7 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
 
       {/* COMPREHENSIVE FLOATING LAYER CONTROL PANEL */}
       {isLayerControlOpen && (
-        <div className="absolute top-14 left-3 z-[1000] w-80 sm:w-96 max-h-[calc(100%-4rem)] overflow-y-auto bg-surface border border-hairline rounded-lg p-3.5 shadow-2xl backdrop-blur-md space-y-3 font-mono text-xs text-ink">
+        <div className="absolute top-14 left-3 z-[1000] w-80 sm:w-96 max-h-[calc(100%-4rem)] overflow-y-auto bg-surface border border-hairline rounded-lg p-3.5 shadow-2xl space-y-3 font-mono text-xs text-ink">
           {/* Header & Quick Actions */}
           <div className="flex items-center justify-between border-b border-hairline pb-2">
             <div className="flex items-center gap-2">
