@@ -15,6 +15,7 @@ import { useSOS } from '../context/SOSContext';
 import { useDisaster } from '../context/DisasterContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/common/Badge';
+import { LiveOpsMap } from '../components/live/LiveOpsMap';
 import { SOSIncident, RescuePriority, SOS_DISASTER_TYPE_LABELS } from '../types/sos';
 
 const requiredActionPresets = [
@@ -148,6 +149,8 @@ export const RescueControlPage: React.FC = () => {
           <span className="text-2xl font-bold text-warn mt-1">{rescuesInProgress}</span>
         </div>
       </div>
+
+      <LiveOpsMap />
 
       {/* INCIDENT TABLE */}
       <div className="p-4 rounded-lg bg-surface border border-hairline shadow-xl space-y-3">

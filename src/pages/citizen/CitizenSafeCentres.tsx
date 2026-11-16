@@ -77,7 +77,7 @@ export const CitizenSafeCentres: React.FC<Props> = ({ location, onNavigate }) =>
           step: 1,
           instruction: `Proceed directly toward ${centre.name}. This is a direct-line distance estimate, not a verified road corridor — follow local signage, emergency personnel, and actual road conditions.`,
           distance: `${Math.round(distanceKm * 10) / 10} km`,
-          roadCondition: 'CLEAR',
+          roadCondition: 'UNKNOWN',
         },
       ],
       isRecommended: false,

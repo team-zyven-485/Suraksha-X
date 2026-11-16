@@ -23,6 +23,7 @@ import { useDisaster } from '../../context/DisasterContext';
 import { SOSStatus, SOSDisasterType } from '../../types/sos';
 import { CitizenLocationState } from './CitizenApp';
 import { useI18n } from '../../i18n';
+import { CitizenLiveTeam } from '../../components/live/CitizenLiveTeam';
 
 interface Props {
   location: CitizenLocationState;
@@ -240,6 +241,8 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
               </div>
             </div>
           )}
+
+          {assignedTeam && !isQueued && <CitizenLiveTeam incident={activeIncident} team={assignedTeam} />}
 
           {activeIncident.instructions && (
             <div className="p-4 rounded-xl bg-surface border border-hairline space-y-1.5 text-xs font-mono">

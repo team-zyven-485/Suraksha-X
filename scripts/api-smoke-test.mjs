@@ -140,6 +140,31 @@ check('status cannot skip steps', (await call('POST', `/sos/${inc.id}/status`, {
 const wrongTeam = (await call('POST', '/auth/login', { body: { role: 'rescue', code: RESCUE_CODE, teamId: 'team-bravo' } })).json?.token;
 check("another team cannot touch this team's incident", (await call('POST', `/sos/${inc.id}/status`, { token: wrongTeam, body: { status: 'DISPATCHED' } })).status === 403);
 
+// ---- live team location
+console.log('live tracking');
+const here = { lat: 26.17, lng: 91.74, accuracy: 12 };
+check('a team can share its own live location', (await call('POST', '/teams/team-alpha/location', { token: tokRescue, body: here })).status === 200);
+check('a team cannot update another team', (await call('POST', '/teams/team-alpha/location', { token: wrongTeam, body: here })).status === 403);
+check('a citizen cannot post team locations', (await call('POST', '/teams/team-alpha/location', { token: tokA, body: here })).status === 403);
+check('an admin cannot post team locations', (await call('POST', '/teams/team-alpha/location', { token: tokAdmin, body: here })).status === 403);
+check('invalid coordinates are rejected', (await call('POST', '/teams/team-alpha/location', { token: tokRescue, body: { lat: 500, lng: 0 } })).status === 400);
+check('updates are throttled', (await call('POST', '/teams/team-alpha/location', { token: tokRescue, body: here })).status === 429);
+const adminTeams = (await call('GET', '/teams', { token: tokAdmin })).json?.teams ?? [];
+check('admin sees the live location (and the flag that says it is real GPS)', adminTeams.find((t) => t.id === 'team-alpha')?.location?.lat === 26.17 && adminTeams.find((t) => t.id === 'team-alpha')?.location?.simulated === false);
+const teamsForA = (await call('GET', '/teams', { token: tokA })).json?.teams ?? [];
+check('the citizen the team is assigned to can see it', teamsForA.find((t) => t.id === 'team-alpha')?.location?.lat === 26.17);
+const teamsForB = (await call('GET', '/teams', { token: tokB })).json?.teams ?? [];
+check('a different citizen cannot see any team location', teamsForB.every((t) => t.location === undefined));
+await new Promise((r) => setTimeout(r, 1600));
+check('a team can stop sharing (location cleared)', (await call('POST', '/teams/team-alpha/location', { token: tokRescue, body: { clear: true } })).status === 200 && !((await call('GET', '/teams', { token: tokAdmin })).json?.teams ?? []).find((t) => t.id === 'team-alpha')?.location);
+
+console.log('routing');
+check('routing requires sign-in', (await call('GET', '/route?fromLat=26.14&fromLng=91.73&toLat=26.18&toLng=91.73')).status === 401);
+check('routing rejects bad coordinates', (await call('GET', '/route?fromLat=abc&fromLng=91.73&toLat=26.18&toLng=91.73', { token: tokA })).status === 400);
+const road = await call('GET', '/route?fromLat=26.1445&fromLng=91.7362&toLat=26.185&toLng=91.735', { token: tokA });
+check('routing answers (a real road route, or an honest "unavailable")', road.status === 200 && typeof road.json?.available === 'boolean');
+console.log(`       road route available: ${road.json?.available}${road.json?.available ? ` (${road.json.distanceKm} km, ${road.json.durationMin} min, ${road.json.steps.length} steps)` : ''}`);
+
 for (const next of ['DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'RESCUED']) {
   const r = await call('POST', `/sos/${inc.id}/status`, { token: tokRescue, body: { status: next } });
   check(`assigned team advances to ${next}`, r.status === 200 && r.json?.incident?.status === next);

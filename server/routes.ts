@@ -11,6 +11,7 @@ import {
   type SOSStatus,
 } from '../src/types/sos';
 import { initialRescueTeams } from '../src/data/rescueTeams';
+import { getRoadRoute } from './routing';
 
 const CITIZEN_TTL = 60 * 60 * 24 * 7; // 7 days — a phone may be offline for a while
 const STAFF_TTL = 60 * 60 * 12; // 12 hours
@@ -117,11 +118,79 @@ export function createApiRouter(store: Store): Router {
   });
 
   // ---- teams ------------------------------------------------------------
-  r.get('/teams', requireRole(), async (_req, res, next) => {
+  r.get('/teams', requireRole(), async (req, res, next) => {
     try {
-      res.json({ teams: await store.listTeams() });
+      let teams = await store.listTeams();
+      if (req.session!.role === 'citizen') {
+        // A citizen may see where THEIR assigned team is — never the other teams.
+        const open = await store.findOpenIncident(req.session!.sub);
+        const visibleTeam = open?.assignedTeamId ?? null;
+        teams = teams.map((t) => {
+          if (t.id === visibleTeam) return t;
+          const { location: _hidden, ...rest } = t;
+          return rest as typeof t;
+        });
+      }
+      res.json({ teams });
     } catch (e) {
       next(e);
+    }
+  });
+
+  // A rescue team shares its live position (real GPS from the phone, or the
+  // clearly flagged "demo drive"). A team can only update ITS OWN position.
+  const lastTeamPing = new Map<string, number>();
+  r.post('/teams/:id/location', requireRole('rescue'), async (req, res, next) => {
+    try {
+      const s = req.session!;
+      if (s.teamId !== req.params.id) return res.status(403).json({ error: 'You can only update your own team' });
+
+      if (req.body?.clear === true) {
+        await store.updateTeam(req.params.id, { location: null });
+        lastTeamPing.delete(req.params.id);
+        return res.json({ ok: true, cleared: true });
+      }
+
+      const { lat, lng, accuracy, simulated } = req.body ?? {};
+      if (!isNum(lat) || !isNum(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'Valid coordinates are required' });
+      }
+      const now = Date.now();
+      if (now - (lastTeamPing.get(req.params.id) ?? 0) < 1500) {
+        return res.status(429).json({ error: 'Location updates are limited to one every 1.5 seconds' });
+      }
+      lastTeamPing.set(req.params.id, now);
+
+      const ok = await store.updateTeam(req.params.id, {
+        location: {
+          lat,
+          lng,
+          accuracy: isNum(accuracy) && accuracy >= 0 && accuracy < 100_000 ? Math.round(accuracy) : null,
+          updatedAt: nowIso(),
+          simulated: simulated === true,
+        },
+      });
+      if (!ok) return res.status(404).json({ error: 'Unknown team' });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ---- real road routing (OSRM / OpenStreetMap) ---------------------------------
+  const routeLimiter = rateLimit({ windowMs: 60_000, max: 40, keyPrefix: 'route:', message: 'Too many route requests. Please wait a moment.' });
+  r.get('/route', requireRole(), routeLimiter, async (req, res) => {
+    const q = (k: string) => Number(req.query[k]);
+    const [fromLat, fromLng, toLat, toLng] = [q('fromLat'), q('fromLng'), q('toLat'), q('toLng')];
+    const ok = (lat: number, lng: number) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    if (!ok(fromLat, fromLng) || !ok(toLat, toLng)) return res.status(400).json({ error: 'Valid coordinates are required' });
+    try {
+      const route = await getRoadRoute({ lat: fromLat, lng: fromLng }, { lat: toLat, lng: toLng });
+      if (!route) return res.json({ available: false, reason: 'No road route found between these points' });
+      res.json(route);
+    } catch (err) {
+      console.warn('[Routing] upstream unavailable:', (err as Error).message);
+      res.json({ available: false, reason: 'Routing service unavailable' });
     }
   });
 

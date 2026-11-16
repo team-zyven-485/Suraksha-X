@@ -93,7 +93,7 @@ export interface EvacuationRoute {
     step: number;
     instruction: string;
     distance: string;
-    roadCondition: 'CLEAR' | 'WATERLOGGED_PASSABLE' | 'CONGESTED';
+    roadCondition: 'CLEAR' | 'WATERLOGGED_PASSABLE' | 'CONGESTED' | 'UNKNOWN';
   }[];
   isRecommended: boolean;
 }

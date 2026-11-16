@@ -16,10 +16,12 @@ copilot (Gemini, with a built-in rule-based fallback).
 | Live weather | **Real.** Current conditions + 3-day rain forecast from Open-Meteo (free, no key). Shows "unavailable" instead of guessing if the feed is down. |
 | Live natural events | **Real.** Open wildfires, storms, floods, volcanoes etc. worldwide from NASA EONET (no key), listed nearest-first with distance and plotted on the map. |
 | NASA satellite imagery overlay | **Real.** Daily MODIS true-color, MODIS flood/water (bands 7-2-1) and IMERG rainfall layers from NASA GIBS on the Command Center map. Imagery is global and a day old; it is a visual aid, not an automated flood detector. |
+| Live rescue-team tracking | **Real.** A rescue phone shares its GPS (browser Geolocation) every few seconds; the admin sees all teams on a live map and the assigned citizen sees only their own team moving toward them, with a live ETA. Privacy is enforced server-side. For single-laptop demos there is a **Demo drive** button: it drives a simulated team along a real road route, and every screen labels it "simulated GPS". |
+| Road routing | **Real.** Routes, distance, time and turn-by-turn directions come from OpenStreetMap (OSRM) and replace straight-line estimates. OSRM knows roads and typical speeds only — **not** floods or blocked roads — and the UI says so. Needs internet; falls back to a labelled straight-line estimate offline. |
 | Risk / priority scoring, team recommendation | **Rule-based formulas** over scenario data (distance, zone risk level, specialization). Not a trained ML model. |
 | Hazard scenarios (flood, earthquake, cyclone, landslide, tsunami) | **Bundled sample data** for 5 regions — not live feeds. |
 | Satellite Intelligence | Sentinel-1 via Copernicus when credentials are set; otherwise clearly labelled **DEMO DATA**. |
-| Live traffic, IoT river sensors | **Not implemented.** Routes are scenario data plus satellite road-risk checks. |
+| Live traffic, IoT river sensors | **Not implemented.** Road routing uses typical speeds, not live traffic. |
 | CAP broadcast | **Simulation.** Generates a CAP XML alert (status `Exercise`) and logs it. The UI is labelled as a simulation; it does **not** connect to any SMS / radio / siren / WhatsApp service. |
 
 ## Architecture
@@ -59,9 +61,9 @@ Atlas: add your IP (or `0.0.0.0/0` for a demo) under *Network Access*, and use a
 
 ```bash
 npm run lint        # type-check
-npm test            # 19 unit tests: triage rules, session tokens, access codes, rate limiting, store invariants
+npm test            # 24 unit tests: triage rules, session tokens, access codes, rate limiting, store invariants, routing geometry
 npm run dev         # in one terminal
-npm run test:api    # in another: 59 end-to-end API checks (auth, roles, ownership, lifecycle, cancel/close, rate limits)
+npm run test:api    # in another: 72 end-to-end API checks (auth, roles, ownership, lifecycle, cancel/close, live-location privacy, routing, rate limits)
 ```
 
 `test:api` creates real incidents in whatever database the server uses — use a throwaway one

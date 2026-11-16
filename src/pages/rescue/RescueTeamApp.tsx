@@ -22,6 +22,7 @@ import { useSatellite } from '../../context/SatelliteContext';
 import { Badge } from '../../components/common/Badge';
 import { AppLogo } from '../../components/common/AppLogo';
 import { ToastContainer } from '../../components/common/Toast';
+import { RescueLivePanel } from '../../components/live/RescueLivePanel';
 import { SOSStatus, SOS_DISASTER_TYPE_LABELS } from '../../types/sos';
 
 const statusBadgeVariant: Record<string, any> = {
@@ -259,23 +260,8 @@ export const RescueTeamApp: React.FC = () => {
               </div>
             )}
 
-            {/* Map */}
-            <div className="h-64 rounded-xl overflow-hidden border border-hairline">
-              <MapContainer center={[activeIncident.coordinates.lat, activeIncident.coordinates.lng]} zoom={12} style={{ height: '100%', width: '100%' }}>
-                <TileLayer attribution="&copy; OpenStreetMap" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {route && <Polyline positions={route.coordinates} pathOptions={{ color: '#3b82f6', weight: 4 }} />}
-                <CircleMarker
-                  center={[activeIncident.coordinates.lat, activeIncident.coordinates.lng]}
-                  radius={10}
-                  pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.6 }}
-                >
-                  <Popup>SOS Victim Location — {activeIncident.id}</Popup>
-                </CircleMarker>
-              </MapContainer>
-            </div>
-            <div className="text-[10px] font-mono text-ink-faint flex items-center gap-1.5">
-              <Navigation className="w-3 h-3" /> Simulated team position — not real-time GPS tracking.
-            </div>
+            {/* Live tracking: real GPS (or labelled demo drive), real road route, ETA */}
+            {team && <RescueLivePanel team={team} incident={activeIncident} />}
 
             {routeEval && (
               <div className={`p-2.5 rounded-lg border flex items-center gap-2 text-[11px] font-mono ${

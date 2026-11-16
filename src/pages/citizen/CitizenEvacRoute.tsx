@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigation, MapPin, CheckCircle2, AlertTriangle, Clock, Satellite } from 'lucide-react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Popup } from 'react-leaflet';
 import { useDisaster } from '../../context/DisasterContext';
@@ -6,6 +6,8 @@ import { useSatellite } from '../../context/SatelliteContext';
 import { Badge } from '../../components/common/Badge';
 import { CitizenLocationState } from './CitizenApp';
 import { useI18n } from '../../i18n';
+import { upgradeToRoadRoute } from '../../lib/roadRoute';
+import type { EvacuationRoute } from '../../types';
 
 interface Props {
   location: CitizenLocationState;
@@ -23,7 +25,25 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
   const satelliteSafeRoute = routeRecommendation?.recommended_route_id
     ? routes.find((r) => r.id === routeRecommendation.recommended_route_id)
     : null;
-  const activeRoute = candidateEval?.rejected && satelliteSafeRoute ? satelliteSafeRoute : candidateRoute;
+  const baseRoute = candidateEval?.rejected && satelliteSafeRoute ? satelliteSafeRoute : candidateRoute;
+
+  // A straight-line estimate is replaced by a real road route (OpenStreetMap)
+  // when the server can fetch one; otherwise the estimate stays, clearly labelled.
+  const [roadRoute, setRoadRoute] = useState<EvacuationRoute | null>(null);
+  const baseId = baseRoute?.id;
+  useEffect(() => {
+    setRoadRoute(null);
+    if (!baseRoute || !baseRoute.id.startsWith('direct-')) return;
+    let cancelled = false;
+    upgradeToRoadRoute(baseRoute).then((r) => {
+      if (!cancelled && r.id !== baseRoute.id) setRoadRoute(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseId]);
+  const activeRoute = roadRoute ?? baseRoute;
   const alternativeRoute = routes.find((r) => r.id !== activeRoute?.id);
   const isDirectEstimate = activeRoute?.id.startsWith('direct-');
 
@@ -129,6 +149,12 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
           </CircleMarker>
         </MapContainer>
       </div>
+
+      {activeRoute.id.startsWith('road-') && (
+        <div className="p-2.5 rounded-lg bg-surface border border-hairline text-[11px] font-mono text-ink-soft">
+          {t('route.roadSource')}
+        </div>
+      )}
 
       {isDirectEstimate && (
         <div className="p-2.5 rounded-lg bg-surface border border-hairline text-[11px] font-mono text-ink-soft">

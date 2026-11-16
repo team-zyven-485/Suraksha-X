@@ -118,6 +118,17 @@ export interface SOSIncident {
 
 export type RescueTeamStatus = 'AVAILABLE' | 'ASSIGNED' | 'DISPATCHED' | 'BUSY';
 
+export interface TeamLocation {
+  lat: number;
+  lng: number;
+  /** GPS accuracy in metres, when the device reports it. */
+  accuracy: number | null;
+  /** ISO time of the last update; old updates are shown as stale. */
+  updatedAt: string;
+  /** True for the "demo drive": positions are generated, not read from a GPS. */
+  simulated: boolean;
+}
+
 export interface RescueTeam {
   id: string;
   name: string;
@@ -127,4 +138,6 @@ export interface RescueTeam {
   baseDistanceKm: number;
   baseEtaMin: number;
   activeIncidentId: string | null;
+  /** Live position shared by the team's phone. Only visible to staff and to the citizen the team is assigned to. */
+  location?: TeamLocation | null;
 }

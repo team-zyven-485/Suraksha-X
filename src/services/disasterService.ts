@@ -1,6 +1,7 @@
 import { RiskZone, ReliefCentre, EvacuationRoute, BlockedRoad, SystemAlert, RelocationPlan, RoadSegment } from '../types';
 import { ScenarioData, ScenarioMeta, DemographicSummary, AnalyticsData } from '../data/scenarios';
 import { getScenario, DEFAULT_SCENARIO_ID } from '../data/scenarios';
+import { upgradeToRoadRoute } from '../lib/roadRoute';
 
 let activeScenarioId = DEFAULT_SCENARIO_ID;
 
@@ -51,7 +52,7 @@ function buildDirectRoute(zone: RiskZone, shelter: ReliefCentre): EvacuationRout
         step: 1,
         instruction: `Proceed directly toward ${shelter.name}. This is a direct-line distance estimate, not a verified road corridor — dispatch a recon team to confirm the actual route before convoy departure.`,
         distance: `${Math.round(distanceKm * 10) / 10} km`,
-        roadCondition: 'CLEAR',
+        roadCondition: 'UNKNOWN',
       },
     ],
     isRecommended: false,
@@ -165,7 +166,7 @@ export const disasterService = {
     const primaryRoute =
       preferredRoute ||
       allRoutes.find((r) => r.destinationId === recommendedShelter.id) ||
-      buildDirectRoute(zone, recommendedShelter);
+      (await upgradeToRoadRoute(buildDirectRoute(zone, recommendedShelter)));
     const alternativeRoutes = allRoutes.filter((r) => r.id !== primaryRoute.id);
 
     const plan: RelocationPlan = {

@@ -9,6 +9,16 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  'live.title': "Rescue team on the way",
+  'live.simulated': "DEMO — simulated GPS",
+  'live.waiting': "Waiting for the team to share its location…",
+  'live.arriving': "Arriving",
+  'live.etaMin': "{n} min",
+  'live.byRoad': "BY ROAD",
+  'live.stale': "Last location update {s} s ago — the team may have lost signal.",
+  'live.updated': "Location updated {s} s ago",
+  'live.routeNote': "Route and ETA come from OpenStreetMap roads. They don't know about floods or blocked roads, so the real arrival time may differ.",
+  'route.roadSource': "Real road route from OpenStreetMap — it does not know about flooding or blocked roads. Follow official guidance and emergency personnel.",
   'sos.cancelBtn': "Cancel this SOS",
   'sos.cancelAsk': "Cancel your SOS? Rescue teams will no longer be alerted.",
   'sos.cancelYes': "Yes, cancel SOS",
@@ -177,6 +187,16 @@ const en: Dict = {
 };
 
 const hi: Dict = {
+  'live.title': "रेस्क्यू टीम रास्ते में है",
+  'live.simulated': "डेमो — नकली GPS",
+  'live.waiting': "टीम के अपना स्थान साझा करने की प्रतीक्षा…",
+  'live.arriving': "पहुँच रही है",
+  'live.etaMin': "{n} मिनट",
+  'live.byRoad': "सड़क से",
+  'live.stale': "स्थान का आखिरी अपडेट {s} सेकंड पहले — हो सकता है टीम का सिग्नल चला गया हो।",
+  'live.updated': "स्थान {s} सेकंड पहले अपडेट हुआ",
+  'live.routeNote': "मार्ग और अनुमानित समय OpenStreetMap की सड़कों पर आधारित हैं। इन्हें बाढ़ या बंद सड़कों की जानकारी नहीं है, इसलिए असली पहुँचने का समय अलग हो सकता है।",
+  'route.roadSource': "OpenStreetMap से असली सड़क मार्ग — इसे बाढ़ या बंद सड़कों की जानकारी नहीं है। आधिकारिक निर्देशों और आपातकालीन कर्मियों का पालन करें।",
   'sos.cancelBtn': "यह SOS रद्द करें",
   'sos.cancelAsk': "क्या आप SOS रद्द करना चाहते हैं? रेस्क्यू टीमों को अब सूचित नहीं किया जाएगा।",
   'sos.cancelYes': "हाँ, SOS रद्द करें",
@@ -345,6 +365,16 @@ const hi: Dict = {
 };
 
 const mr: Dict = {
+  'live.title': "रेस्क्यू टीम मार्गावर आहे",
+  'live.simulated': "डेमो — बनावट GPS",
+  'live.waiting': "टीमने आपले स्थान शेअर करण्याची प्रतीक्षा…",
+  'live.arriving': "पोहोचत आहे",
+  'live.etaMin': "{n} मिनिटे",
+  'live.byRoad': "रस्त्याने",
+  'live.stale': "स्थानाचे शेवटचे अपडेट {s} सेकंदांपूर्वी — टीमचा सिग्नल गेला असू शकतो.",
+  'live.updated': "स्थान {s} सेकंदांपूर्वी अपडेट झाले",
+  'live.routeNote': "मार्ग आणि अंदाजे वेळ OpenStreetMap च्या रस्त्यांवर आधारित आहेत. त्यांना पूर किंवा बंद रस्त्यांची माहिती नसते, त्यामुळे प्रत्यक्ष पोहोचण्याची वेळ वेगळी असू शकते.",
+  'route.roadSource': "OpenStreetMap वरून खरा रस्ता मार्ग — त्याला पूर किंवा बंद रस्त्यांची माहिती नाही. अधिकृत सूचना आणि आपत्कालीन कर्मचाऱ्यांचे पालन करा.",
   'sos.cancelBtn': "हा SOS रद्द करा",
   'sos.cancelAsk': "तुमचा SOS रद्द करायचा? रेस्क्यू टीमना यापुढे कळवले जाणार नाही.",
   'sos.cancelYes': "होय, SOS रद्द करा",

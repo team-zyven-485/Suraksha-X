@@ -84,6 +84,7 @@ export const TurnByTurnModal: React.FC<TurnByTurnModalProps> = ({ isOpen, onClos
               CLEAR: 'text-safe bg-safe-soft border-safe/30',
               WATERLOGGED_PASSABLE: 'text-warn bg-warn-soft border-warn/30',
               CONGESTED: 'text-warn bg-warn-soft border-warn/30',
+              UNKNOWN: 'text-ink-soft bg-inset border-hairline',
             };
 
             return (
