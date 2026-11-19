@@ -4,11 +4,13 @@ import {
   LatLng,
   RoadRouteData,
   cumulativeKm,
-  fetchRoadRoute,
+  fetchBestRoute,
   offsetPoint,
   pointAtKm,
   progressAlong,
 } from './roadRoute';
+import type { BuiltSimulation } from '../shared/hazardSim';
+import { simSignature, type RouteChoice } from '../shared/hazardRouting';
 
 /** Re-renders on an interval so "last seen 12 s ago" stays current. */
 export function useNow(intervalMs = 5000): number {
@@ -26,13 +28,15 @@ export function useNow(intervalMs = 5000): number {
  * older than 90 s, and the remaining distance / ETA are computed locally in
  * between, so a moving team does not hammer the routing service.
  */
-export function useLiveRoute(origin: LatLng | null, dest: LatLng | null) {
+export function useLiveRoute(origin: LatLng | null, dest: LatLng | null, hazard?: BuiltSimulation | null) {
   const [route, setRoute] = useState<RoadRouteData | null>(null);
+  const [choice, setChoice] = useState<RouteChoice<RoadRouteData> | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'unavailable'>('idle');
   const fetchedAt = useRef(0);
   const routeKey = useRef('');
   const inflight = useRef(false);
-  const destKey = dest ? `${dest.lat.toFixed(5)},${dest.lng.toFixed(5)}` : '';
+  // A new destination OR a changed hazard footprint means the route must be chosen again.
+  const destKey = (dest ? `${dest.lat.toFixed(5)},${dest.lng.toFixed(5)}` : '') + '|' + simSignature(hazard);
 
   const cum = useMemo(() => (route ? cumulativeKm(route.coordinates) : null), [route]);
   const progress = useMemo(
@@ -50,11 +54,12 @@ export function useLiveRoute(origin: LatLng | null, dest: LatLng | null) {
     inflight.current = true;
     fetchedAt.current = Date.now();
     if (!route) setStatus('loading');
-    fetchRoadRoute(origin, dest)
+    fetchBestRoute(origin, dest, hazard)
       .then((r) => {
         routeKey.current = destKey;
         if (r) {
-          setRoute(r);
+          setRoute(r.route);
+          setChoice(r.choice);
           setStatus('ok');
         } else {
           setStatus((s) => (route ? s : 'unavailable'));
@@ -73,7 +78,7 @@ export function useLiveRoute(origin: LatLng | null, dest: LatLng | null) {
         : Math.max(1, Math.round((route.durationMin * remainingKm) / Math.max(route.distanceKm, 0.1)))
       : null;
 
-  return { route, status, remainingKm, etaMin };
+  return { route, status, remainingKm, etaMin, choice };
 }
 
 export type ShareState = 'off' | 'starting' | 'live' | 'error';
@@ -143,7 +148,7 @@ export type DriveState = 'idle' | 'planning' | 'driving' | 'arrived';
  * victim in ~50 seconds, posting each position flagged `simulated: true`, so a
  * single laptop can show the whole live-tracking flow. Clearly labelled in the UI.
  */
-export function useDemoDrive(teamId: string | undefined, victim: LatLng | null, baseKm: number, enabled: boolean) {
+export function useDemoDrive(teamId: string | undefined, victim: LatLng | null, baseKm: number, enabled: boolean, hazard?: BuiltSimulation | null) {
   const [state, setState] = useState<DriveState>('idle');
   const [position, setPosition] = useState<LatLng | null>(null);
 
@@ -158,9 +163,9 @@ export function useDemoDrive(teamId: string | undefined, victim: LatLng | null, 
 
     (async () => {
       const start = offsetPoint(victim, Math.min(Math.max(baseKm, 1.5), 6), 135);
-      const road = await fetchRoadRoute(start, victim);
+      const best = await fetchBestRoute(start, victim, hazard);
       if (cancelled) return;
-      const coords: [number, number][] = road ? road.coordinates : [[start.lat, start.lng], [victim.lat, victim.lng]];
+      const coords: [number, number][] = best ? best.route.coordinates : [[start.lat, start.lng], [victim.lat, victim.lng]];
       const cum = cumulativeKm(coords);
       const total = cum[cum.length - 1];
       const STEPS = 25; // one update every 2 s
@@ -191,6 +196,7 @@ export function useDemoDrive(teamId: string | undefined, victim: LatLng | null, 
       api(`/teams/${encodeURIComponent(teamId)}/location`, { method: 'POST', json: { clear: true } }).catch(() => {});
     };
   }, [enabled, teamId, victim?.lat, victim?.lng, baseKm]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (the hazard is read once when the drive starts; changing it mid-drive does not re-plan)
 
   return { state, position };
 }

@@ -86,35 +86,22 @@ function decimate(points: [number, number][], max: number): [number, number][] {
   return out;
 }
 
-export async function getRoadRoute(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number }
-): Promise<RoadRoute | null> {
-  const key = `${round(from.lat)},${round(from.lng)}>${round(to.lat)},${round(to.lng)}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return hit.route;
-
-  const url =
-    `${OSRM_BASE}/${from.lng},${from.lat};${to.lng},${to.lat}` +
-    `?overview=full&geometries=geojson&steps=true&alternatives=false`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(9000), headers: { 'User-Agent': 'suraksha-x/1.0 (disaster response demo)' } });
-  if (!res.ok) throw new Error(`OSRM ${res.status}`);
-  const data: any = await res.json();
-  if (data.code !== 'Ok' || !data.routes?.[0]) return null; // e.g. NoRoute (islands, no road link)
-
-  const r = data.routes[0];
-  const coords: [number, number][] = (r.geometry?.coordinates ?? []).map((c: number[]) => [c[1], c[0]]);
+function parseRoute(r: any): RoadRoute | null {
+  const coords: [number, number][] = (r?.geometry?.coordinates ?? []).map((c: number[]) => [c[1], c[0]]);
   if (coords.length < 2) return null;
-
-  const steps = (r.legs ?? [])
-    .flatMap((leg: any) => leg.steps ?? [])
+  const legs: any[] = r.legs ?? [];
+  const steps = legs
+    // With a via waypoint, every leg ends with an "arrive" and the next one starts with a
+    // "depart". Keep only the very first depart and the very last arrive.
+    .flatMap((leg: any, i: number) =>
+      (leg.steps ?? []).filter((s: any) => !(i > 0 && s.maneuver?.type === 'depart') && !(i < legs.length - 1 && s.maneuver?.type === 'arrive'))
+    )
     .map((s: any) => ({
       instruction: describeStep(s),
       distanceM: Math.round(Number(s.distance) || 0),
       name: s.name ? String(s.name) : '',
     }));
-
-  const route: RoadRoute = {
+  return {
     available: true,
     source: 'OSRM (OpenStreetMap)',
     distanceKm: Math.round((Number(r.distance) / 1000) * 10) / 10,
@@ -122,8 +109,59 @@ export async function getRoadRoute(
     coordinates: decimate(coords, MAX_POINTS),
     steps,
   };
+}
 
+const altCache = new Map<string, { at: number; routes: RoadRoute[] }>();
+
+/** One OSRM request; returns the best route first, then any alternatives it found. */
+async function fetchOsrm(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  alternatives: number,
+  via?: { lat: number; lng: number }
+): Promise<RoadRoute[]> {
+  const waypoints = via ? `${from.lng},${from.lat};${via.lng},${via.lat};${to.lng},${to.lat}` : `${from.lng},${from.lat};${to.lng},${to.lat}`;
+  const url =
+    `${OSRM_BASE}/${waypoints}` +
+    `?overview=full&geometries=geojson&steps=true&alternatives=${alternatives > 0 ? alternatives : 'false'}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000), headers: { 'User-Agent': 'suraksha-x/1.0 (disaster response demo)' } });
+  if (!res.ok) throw new Error(`OSRM ${res.status}`);
+  const data: any = await res.json();
+  if (data.code !== 'Ok' || !Array.isArray(data.routes)) return []; // e.g. NoRoute (islands, no road link)
+  return data.routes.map(parseRoute).filter((r: RoadRoute | null): r is RoadRoute => r !== null);
+}
+
+export async function getRoadRoute(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  via?: { lat: number; lng: number }
+): Promise<RoadRoute | null> {
+  const key = `${round(from.lat)},${round(from.lng)}>${round(to.lat)},${round(to.lng)}${via ? `|via${round(via.lat)},${round(via.lng)}` : ''}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.route;
+
+  const route = (await fetchOsrm(from, to, 0, via))[0] ?? null;
+  if (!route) return null;
   if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value as string); // drop the oldest
   cache.set(key, { at: Date.now(), route });
   return route;
+}
+
+/**
+ * The best road route plus up to two alternatives (OSRM only returns
+ * alternatives it considers meaningfully different), for hazard-aware choice.
+ */
+export async function getRoadAlternatives(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+): Promise<RoadRoute[]> {
+  const key = `${round(from.lat)},${round(from.lng)}>${round(to.lat)},${round(to.lng)}|alt`;
+  const hit = altCache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.routes;
+
+  const routes = (await fetchOsrm(from, to, 3)).slice(0, 3);
+  if (routes.length === 0) return [];
+  if (altCache.size >= MAX_CACHE) altCache.delete(altCache.keys().next().value as string);
+  altCache.set(key, { at: Date.now(), routes });
+  return routes;
 }

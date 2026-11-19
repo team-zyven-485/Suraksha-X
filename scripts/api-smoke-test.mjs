@@ -173,6 +173,13 @@ check('unknown incident is a 404', (await call('POST', '/sos/SOS-NOPE0000/simula
 console.log('routing');
 check('routing requires sign-in', (await call('GET', '/route?fromLat=26.14&fromLng=91.73&toLat=26.18&toLng=91.73')).status === 401);
 check('routing rejects bad coordinates', (await call('GET', '/route?fromLat=abc&fromLng=91.73&toLat=26.18&toLng=91.73', { token: tokA })).status === 400);
+check('alternatives require sign-in', (await call('GET', '/route/alternatives?fromLat=26.14&fromLng=91.73&toLat=26.18&toLng=91.73')).status === 401);
+check('alternatives reject bad coordinates', (await call('GET', '/route/alternatives?fromLat=x&fromLng=91.73&toLat=26.18&toLng=91.73', { token: tokA })).status === 400);
+const alts = await call('GET', '/route/alternatives?fromLat=26.1445&fromLng=91.7362&toLat=26.185&toLng=91.735', { token: tokA });
+check('alternatives answer (1-3 road routes, or an honest "unavailable")', alts.status === 200 && (alts.json?.available === false || (Array.isArray(alts.json?.routes) && alts.json.routes.length >= 1 && alts.json.routes.length <= 3 && alts.json.routes.every((r) => r.coordinates.length > 1))));
+check('a via waypoint must be valid', (await call('GET', '/route?fromLat=26.14&fromLng=91.73&toLat=26.18&toLng=91.73&viaLat=999&viaLng=0', { token: tokA })).status === 400);
+const viaRoute = await call('GET', '/route?fromLat=26.1445&fromLng=91.7362&toLat=26.185&toLng=91.735&viaLat=26.17&viaLng=91.77', { token: tokA });
+check('a route via a waypoint answers, and the waypoint is not announced as the destination', viaRoute.status === 200 && (viaRoute.json?.available === false || viaRoute.json.steps.filter((st) => st.instruction.startsWith('Arrive')).length === 1));
 const road = await call('GET', '/route?fromLat=26.1445&fromLng=91.7362&toLat=26.185&toLng=91.735', { token: tokA });
 check('routing answers (a real road route, or an honest "unavailable")', road.status === 200 && typeof road.json?.available === 'boolean');
 console.log(`       road route available: ${road.json?.available}${road.json?.available ? ` (${road.json.distanceKm} km, ${road.json.durationMin} min, ${road.json.steps.length} steps)` : ''}`);

@@ -11,7 +11,7 @@ import {
   type SOSStatus,
 } from '../src/types/sos';
 import { initialRescueTeams } from '../src/data/rescueTeams';
-import { getRoadRoute } from './routing';
+import { getRoadAlternatives, getRoadRoute } from './routing';
 import { generateSimParams } from './gemini';
 import { SEVERITIES, severityFromPriority, validateParams, type Severity } from '../src/shared/hazardSim';
 import { haversineKm, nearestZone } from '../src/shared/sosTriage';
@@ -182,13 +182,33 @@ export function createApiRouter(store: Store): Router {
 
   // ---- real road routing (OSRM / OpenStreetMap) ---------------------------------
   const routeLimiter = rateLimit({ windowMs: 60_000, max: 40, keyPrefix: 'route:', message: 'Too many route requests. Please wait a moment.' });
-  r.get('/route', requireRole(), routeLimiter, async (req, res) => {
+  // Up to three alternative road routes, so the client can choose the one that best avoids a hazard.
+  r.get('/route/alternatives', requireRole(), routeLimiter, async (req, res) => {
     const q = (k: string) => Number(req.query[k]);
     const [fromLat, fromLng, toLat, toLng] = [q('fromLat'), q('fromLng'), q('toLat'), q('toLng')];
     const ok = (lat: number, lng: number) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
     if (!ok(fromLat, fromLng) || !ok(toLat, toLng)) return res.status(400).json({ error: 'Valid coordinates are required' });
     try {
-      const route = await getRoadRoute({ lat: fromLat, lng: fromLng }, { lat: toLat, lng: toLng });
+      const routes = await getRoadAlternatives({ lat: fromLat, lng: fromLng }, { lat: toLat, lng: toLng });
+      if (routes.length === 0) return res.json({ available: false, reason: 'No road route found between these points' });
+      res.json({ available: true, routes });
+    } catch (err) {
+      console.warn('[Routing] alternatives unavailable:', (err as Error).message);
+      res.json({ available: false, reason: 'Routing service unavailable' });
+    }
+  });
+
+  r.get('/route', requireRole(), routeLimiter, async (req, res) => {
+    const q = (k: string) => Number(req.query[k]);
+    const [fromLat, fromLng, toLat, toLng] = [q('fromLat'), q('fromLng'), q('toLat'), q('toLng')];
+    const ok = (lat: number, lng: number) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    if (!ok(fromLat, fromLng) || !ok(toLat, toLng)) return res.status(400).json({ error: 'Valid coordinates are required' });
+    // Optional single via waypoint (used to try a detour around a hazard zone).
+    const hasVia = req.query.viaLat !== undefined || req.query.viaLng !== undefined;
+    const via = hasVia ? { lat: q('viaLat'), lng: q('viaLng') } : undefined;
+    if (via && !ok(via.lat, via.lng)) return res.status(400).json({ error: 'Valid via coordinates are required' });
+    try {
+      const route = await getRoadRoute({ lat: fromLat, lng: fromLng }, { lat: toLat, lng: toLng }, via);
       if (!route) return res.json({ available: false, reason: 'No road route found between these points' });
       res.json(route);
     } catch (err) {

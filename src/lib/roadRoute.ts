@@ -1,5 +1,7 @@
 import type { EvacuationRoute } from '../types';
 import { haversineKm } from '../shared/sosTriage';
+import type { BuiltSimulation } from '../shared/hazardSim';
+import { pickRoute, suggestVias, type RouteChoice } from '../shared/hazardRouting';
 import { api } from './api';
 
 export interface LatLng {
@@ -17,7 +19,7 @@ export interface RoadRouteData {
 }
 
 /** Real road route (OpenStreetMap via our server), or null if unavailable / offline. */
-export async function fetchRoadRoute(from: LatLng, to: LatLng): Promise<RoadRouteData | null> {
+export async function fetchRoadRoute(from: LatLng, to: LatLng, via?: LatLng): Promise<RoadRouteData | null> {
   try {
     const q = new URLSearchParams({
       fromLat: String(from.lat),
@@ -25,11 +27,68 @@ export async function fetchRoadRoute(from: LatLng, to: LatLng): Promise<RoadRout
       toLat: String(to.lat),
       toLng: String(to.lng),
     });
+    if (via) {
+      q.set('viaLat', String(via.lat));
+      q.set('viaLng', String(via.lng));
+    }
     const data = await api<RoadRouteData | { available: false }>(`/route?${q}`, { signal: AbortSignal.timeout(12_000) });
     return data.available ? data : null;
   } catch {
     return null;
   }
+}
+
+/** The best route plus up to two alternatives. Empty if routing is unavailable. */
+export async function fetchRoadAlternatives(from: LatLng, to: LatLng): Promise<RoadRouteData[]> {
+  try {
+    const q = new URLSearchParams({
+      fromLat: String(from.lat),
+      fromLng: String(from.lng),
+      toLat: String(to.lat),
+      toLng: String(to.lng),
+    });
+    const data = await api<{ available: true; routes: RoadRouteData[] } | { available: false }>(`/route/alternatives?${q}`, {
+      signal: AbortSignal.timeout(14_000),
+    });
+    return data.available ? data.routes : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface BestRoute {
+  route: RoadRouteData;
+  /** Present when a hazard footprint was supplied: how the alternatives compared. */
+  choice: RouteChoice<RoadRouteData> | null;
+}
+
+/**
+ * Without a hazard this is just the best road route. With a simulated
+ * footprint, it fetches the alternatives and returns the one that best
+ * balances travel time against distance inside the footprint.
+ */
+export async function fetchBestRoute(from: LatLng, to: LatLng, hazard?: BuiltSimulation | null): Promise<BestRoute | null> {
+  if (hazard) {
+    const alts = await fetchRoadAlternatives(from, to);
+    if (alts.length > 0) {
+      let candidates = alts;
+      let choice = pickRoute(candidates, hazard);
+      // The best route still crosses the footprint: try our own detours around its edge
+      // and score every candidate together.
+      if (choice.entries[choice.chosenIndex].exposure.kmInside > 0) {
+        const detours = (await Promise.all(suggestVias(from, to, hazard).map((via) => fetchRoadRoute(from, to, via)))).filter(
+          (r): r is RoadRouteData => r !== null
+        );
+        if (detours.length > 0) {
+          candidates = [...alts, ...detours];
+          choice = pickRoute(candidates, hazard);
+        }
+      }
+      return { route: candidates[choice.chosenIndex], choice };
+    }
+  }
+  const single = await fetchRoadRoute(from, to);
+  return single ? { route: single, choice: null } : null;
 }
 
 const fmtDistance = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.max(1, Math.round(m / 10) * 10)} m`);

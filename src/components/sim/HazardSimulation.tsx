@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, Marker, Popup } from 'react-leaflet';
 import { useFitBounds } from '../../lib/useFitBounds';
+import { setSimParams } from '../../lib/simStore';
 import L from 'leaflet';
 import { FlaskConical, Play, Pause, Sparkles, Cpu, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SOSIncident } from '../../types/sos';
@@ -94,6 +95,7 @@ export const HazardSimulation: React.FC<{ incident: SOSIncident; audience: 'citi
       ).then((res) => {
         if (cancelled) return;
         setData(res);
+        setSimParams(incident.id, res.params); // hazard-aware routing uses the same footprint
         setLoading(false);
         setTime(0.15);
         setPlaying(true); // watch it grow
