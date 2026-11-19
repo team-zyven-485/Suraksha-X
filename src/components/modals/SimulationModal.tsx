@@ -129,7 +129,7 @@ export const SimulationModal: React.FC = () => {
         </div>
 
         <div className="mt-5 text-center text-[10px] font-mono text-ink-faint">
-          OPERATIONAL DECISION-SUPPORT SYNTHESIS • ZYVEN EMERGENCY SYSTEMS
+          OPERATIONAL DECISION-SUPPORT SYNTHESIS
         </div>
       </div>
     </div>

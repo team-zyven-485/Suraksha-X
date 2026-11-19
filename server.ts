@@ -1,16 +1,26 @@
+// Must be the first import: loads .env before the server modules below read it.
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { createStore } from './server/store';
+import { GEMINI_MODELS, modelAvailable, noteModelFailure, withTimeout } from './server/gemini';
+import { createApiRouter } from './server/routes';
+import { attachSession, requireRole, securityHeaders } from './server/security';
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const store = await createStore();
 
-  app.use(express.json());
+  // Behind Render/Railway/etc. the real client IP is in X-Forwarded-For;
+  // without this every user shares the proxy's IP and one rate limit.
+  if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+
+  app.use(securityHeaders);
+  app.use(express.json({ limit: '300kb' }));
+  app.use('/api', createApiRouter(store));
 
   // Basic per-IP rate limiting for /api/chat: the Gemini key never reaches
   // the client, but the endpoint itself is open to anyone who can reach the
@@ -50,28 +60,23 @@ async function startServer() {
     });
   };
 
-  // Health endpoint
-  app.get('/api/health', (req, res) => {
-    res.json({
-      status: 'ok',
-      service: 'SURAKSHA-X Disaster Intelligence API',
-      timestamp: new Date().toISOString(),
-      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
-    });
-  });
-
-  // Context-Aware Gemini Chatbot Endpoint
-  app.post('/api/chat', async (req, res) => {
+  // Context-Aware Gemini Chatbot Endpoint. Signed-in users only (it spends
+  // Gemini quota), plus the per-IP limiter above.
+  app.post('/api/chat', attachSession, requireRole('admin', 'rescue'), async (req, res) => {
     try {
       const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
       if (isChatRateLimited(clientIp)) {
         return res.status(429).json({ error: 'Too many requests — please slow down.' });
       }
 
-      const { message, context, conversationHistory } = req.body;
+      const { context, conversationHistory } = req.body ?? {};
+      const message: unknown = req.body?.message;
 
-      if (!message) {
+      if (typeof message !== 'string' || !message.trim()) {
         return res.status(400).json({ error: 'Message is required' });
+      }
+      if (message.length > 2000) {
+        return res.status(400).json({ error: 'Message is too long (2000 characters max)' });
       }
 
       const client = getGeminiClient();
@@ -82,7 +87,7 @@ async function startServer() {
       const route = context?.selectedRoute;
       const blockedRoadsList: any[] = Array.isArray(context?.blockedRoadsDetail) ? context.blockedRoadsDetail : [];
 
-      const systemPrompt = `You are SURAKSHA-X AI Assistant, an elite disaster intelligence and relocation decision-support AI copilot built by Team ZYVEN for the Smart India Hackathon (SIH26191 — Multi-Hazard Relocation System).
+      const systemPrompt = `You are SURAKSHA-X AI Assistant, an elite disaster intelligence and relocation decision-support AI copilot for a multi-hazard relocation system.
 
 You assist Admin, incident commanders, NDRF response teams, and civil administrators in making real-time, life-saving evacuation decisions.
 
@@ -102,12 +107,8 @@ RESPONSE GUIDELINES:
 
       if (client) {
         // Multi-model resilience cascade: try available models in priority order
-        const candidateModels = [
-          'gemini-2.5-flash',
-          'gemini-3.7-flash',
-          'gemini-3.1-flash-lite',
-          'gemini-flash-latest',
-        ];
+        // Newest healthy Flash model first; models that recently failed sit out a cooldown.
+        const candidateModels = GEMINI_MODELS.filter(modelAvailable);
 
         // Format conversation history for Gemini API
         const contents: any[] = [];
@@ -116,7 +117,7 @@ RESPONSE GUIDELINES:
           for (const turn of conversationHistory.slice(-6)) {
             contents.push({
               role: turn.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: turn.content }],
+              parts: [{ text: String(turn?.content ?? '').slice(0, 2000) }],
             });
           }
         }
@@ -134,15 +135,15 @@ RESPONSE GUIDELINES:
         for (const modelName of candidateModels) {
           try {
             // Attempt generation with current candidate model
-            const response = await client.models.generateContent({
+            const response = await withTimeout(client.models.generateContent({
               model: modelName,
               contents,
               config: {
                 systemInstruction: systemPrompt,
                 temperature: 0.3,
-                maxOutputTokens: 1000,
+                maxOutputTokens: 2048,
               },
-            });
+            }), 12_000);
 
             const replyText = response.text || 'Operational response received from SURAKSHA-X intelligence core.';
             return res.json({
@@ -159,6 +160,7 @@ RESPONSE GUIDELINES:
               errorMsg.includes('UNAVAILABLE') ||
               errorMsg.includes('RESOURCE_EXHAUSTED');
 
+            noteModelFailure(modelName, errorMsg);
             console.warn(`[Gemini API Warning - ${modelName} failed]: ${errorMsg.slice(0, 120)}... trying next model in cascade.`);
 
             // If it's a transient 503 or 429, pause 300ms before next candidate model
@@ -185,7 +187,7 @@ RESPONSE GUIDELINES:
 
         fallbackReply = `### 📋 OFFICIAL DISASTER RELOCATION DIRECTIVE
 **Incident Command Protocol #PLAN-${Date.now().toString().slice(-6)}**
-**Authorized Under Admin Incident Command Protocol**
+**DRAFT — pending Admin authorization**
 
 - **Scenario:** ${scenario?.name || 'Active Disaster Scenario'} (${scenario?.category || ''})
 - **Target Zone:** ${zoneName} (${zone?.priority || 'P1'} — Risk Score ${zone?.riskScore ?? '—'}/100)
@@ -266,6 +268,17 @@ Active monitoring in progress for **${scenario?.riverBasinOrFault || scenario?.r
     }
   });
 
+  // Unknown API paths are JSON 404s, never the SPA's index.html.
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+
+  // Last-resort error handler: log server-side, never leak details to clients.
+  app.use('/api', (err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'Request too large' });
+    if (err instanceof SyntaxError) return res.status(400).json({ error: 'Invalid JSON' });
+    console.error('[API Error]:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  });
+
   // Vite middleware setup
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -275,8 +288,15 @@ Active monitoring in progress for **${scenario?.riverBasinOrFault || scenario?.r
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // The service worker must never be cached by the browser, or app updates
+    // would never reach installed devices.
+    app.get('/sw.js', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(distPath, 'sw.js'));
+    });
+    app.use(express.static(distPath, { index: false, maxAge: '1h' }));
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

@@ -4,6 +4,7 @@ import { useDisaster } from '../../context/DisasterContext';
 import { Badge } from '../../components/common/Badge';
 import { CitizenLocationState, CitizenView } from './CitizenApp';
 import { ReliefCentre, EvacuationRoute } from '../../types';
+import { useI18n } from '../../i18n';
 
 interface Props {
   location: CitizenLocationState;
@@ -22,6 +23,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 
 export const CitizenSafeCentres: React.FC<Props> = ({ location, onNavigate }) => {
   const { reliefCentres, routes, riskZones, selectedZone, setSelectedShelter, setSelectedRoute } = useDisaster();
+  const { t } = useI18n();
 
   const ranked = [...reliefCentres]
     .map((c) => {
@@ -75,7 +77,7 @@ export const CitizenSafeCentres: React.FC<Props> = ({ location, onNavigate }) =>
           step: 1,
           instruction: `Proceed directly toward ${centre.name}. This is a direct-line distance estimate, not a verified road corridor — follow local signage, emergency personnel, and actual road conditions.`,
           distance: `${Math.round(distanceKm * 10) / 10} km`,
-          roadCondition: 'CLEAR',
+          roadCondition: 'UNKNOWN',
         },
       ],
       isRecommended: false,
@@ -90,9 +92,9 @@ export const CitizenSafeCentres: React.FC<Props> = ({ location, onNavigate }) =>
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-bold font-mono text-ink">Nearby Safe Centres</h2>
+      <h2 className="text-sm font-bold font-mono text-ink">{t('centres.title')}</h2>
       <p className="text-xs text-ink-soft">
-        Ranked by safety, available capacity, and accessibility — not just distance.
+        {t('centres.subtitle')}
       </p>
 
       <div className="space-y-3">
@@ -105,32 +107,32 @@ export const CitizenSafeCentres: React.FC<Props> = ({ location, onNavigate }) =>
                 <span className="text-sm font-bold text-ink">{c.code}</span>
               </div>
               <Badge variant={c.status === 'AVAILABLE' ? 'safe' : c.status === 'NEAR_CAPACITY' ? 'moderate' : 'critical'} size="sm">
-                {c.status.replace('_', ' ')}
+                {t(`status.${c.status}`)}
               </Badge>
             </div>
             <div className="text-xs text-ink-soft">{c.name}</div>
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <div className="flex items-center gap-1 text-ink-soft">
-                <MapPin className="w-3 h-3" /> Distance: <span className="text-ink">{c.computedDistanceKm.toFixed(1)} km</span>
+                <MapPin className="w-3 h-3" /> {t('centres.distance')}: <span className="text-ink">{c.computedDistanceKm.toFixed(1)} km</span>
               </div>
               <div className="flex items-center gap-1 text-ink-soft">
-                <ShieldCheck className="w-3 h-3" /> Safety: <span className="text-ink">{c.safetyScore}/100</span>
+                <ShieldCheck className="w-3 h-3" /> {t('centres.safety')}: <span className="text-ink">{c.safetyScore}/100</span>
               </div>
               <div className="text-ink-soft">
-                Available: <span className={c.available > 0 ? 'text-safe' : 'text-critical'}>{c.available}</span>
+                {t('centres.available')}: <span className={c.available > 0 ? 'text-safe' : 'text-critical'}>{c.available}</span>
               </div>
               <div className="flex items-center gap-1 text-ink-soft">
                 <Accessibility className="w-3 h-3" />
-                {c.facilities.wheelchairAccessible ? 'Accessible' : 'Limited Access'}
+                {c.facilities.wheelchairAccessible ? t('centres.accessible') : t('centres.limited')}
               </div>
             </div>
             <button
               onClick={() => handleGetRoute(c)}
               disabled={c.available === 0}
-              title={c.available === 0 ? 'This centre has no available capacity right now' : undefined}
+              title={c.available === 0 ? t('centres.fullTitle') : undefined}
               className="w-full mt-1 py-2 rounded-lg bg-brand-soft hover:bg-brand-soft disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-brand-soft border border-brand/30 text-brand text-xs font-mono font-semibold transition-colors"
             >
-              {c.available === 0 ? 'Full — No Capacity' : 'Get Route'}
+              {c.available === 0 ? t('centres.full') : t('centres.getRoute')}
             </button>
           </div>
         ))}

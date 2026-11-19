@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigation, MapPin, CheckCircle2, AlertTriangle, Clock, Satellite } from 'lucide-react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Popup } from 'react-leaflet';
 import { useDisaster } from '../../context/DisasterContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { Badge } from '../../components/common/Badge';
 import { CitizenLocationState } from './CitizenApp';
+import { useI18n } from '../../i18n';
+import { upgradeToRoadRoute } from '../../lib/roadRoute';
+import type { EvacuationRoute } from '../../types';
 
 interface Props {
   location: CitizenLocationState;
@@ -13,6 +16,7 @@ interface Props {
 export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
   const { routes, selectedRoute, blockedRoads, selectedZone, selectedShelter } = useDisaster();
   const { hazard, getRouteEvaluation, routeRecommendation } = useSatellite();
+  const { t } = useI18n();
 
   const candidateRoute = selectedRoute || routes.find((r) => r.isRecommended) || routes[0];
   // Never present a satellite-rejected (BLOCKED) route as the one to take —
@@ -21,12 +25,30 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
   const satelliteSafeRoute = routeRecommendation?.recommended_route_id
     ? routes.find((r) => r.id === routeRecommendation.recommended_route_id)
     : null;
-  const activeRoute = candidateEval?.rejected && satelliteSafeRoute ? satelliteSafeRoute : candidateRoute;
+  const baseRoute = candidateEval?.rejected && satelliteSafeRoute ? satelliteSafeRoute : candidateRoute;
+
+  // A straight-line estimate is replaced by a real road route (OpenStreetMap)
+  // when the server can fetch one; otherwise the estimate stays, clearly labelled.
+  const [roadRoute, setRoadRoute] = useState<EvacuationRoute | null>(null);
+  const baseId = baseRoute?.id;
+  useEffect(() => {
+    setRoadRoute(null);
+    if (!baseRoute || !baseRoute.id.startsWith('direct-')) return;
+    let cancelled = false;
+    upgradeToRoadRoute(baseRoute).then((r) => {
+      if (!cancelled && r.id !== baseRoute.id) setRoadRoute(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseId]);
+  const activeRoute = roadRoute ?? baseRoute;
   const alternativeRoute = routes.find((r) => r.id !== activeRoute?.id);
   const isDirectEstimate = activeRoute?.id.startsWith('direct-');
 
   if (!activeRoute) {
-    return <div className="text-xs font-mono text-ink-faint">No evacuation route available for this scenario yet.</div>;
+    return <div className="text-xs font-mono text-ink-faint">{t('route.noRoute')}</div>;
   }
 
   // Track the route's actual safety level instead of always showing green —
@@ -49,7 +71,7 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-bold font-mono text-ink">Safe Evacuation Route</h2>
+      <h2 className="text-sm font-bold font-mono text-ink">{t('route.title')}</h2>
 
       <div className="flex items-center gap-2 text-xs font-mono text-ink-soft">
         <MapPin className="w-3.5 h-3.5 text-critical" /> {activeRoute.originName}
@@ -68,9 +90,9 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
             <Satellite className="w-3.5 h-3.5 shrink-0" />
             <span>
               {safe
-                ? 'Satellite-confirmed safe corridor'
-                : 'This is the safest route based on updated satellite hazard information.'}
-              {hazard?.data_mode === 'DEMO' && ' (Demo Data)'}
+                ? t('route.satSafe')
+                : t('route.satSafest')}
+              {hazard?.data_mode === 'DEMO' && ` ${t('route.demoData')}`}
             </span>
           </div>
         );
@@ -78,19 +100,19 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="p-3 rounded-lg bg-surface border border-hairline text-center">
-          <div className="text-[10px] text-ink-faint font-mono">DISTANCE</div>
+          <div className="text-[10px] text-ink-faint font-mono">{t('route.distance')}</div>
           <div className="text-lg font-bold text-ink font-mono">{activeRoute.distanceKm} km</div>
         </div>
         <div className="p-3 rounded-lg bg-surface border border-hairline text-center">
-          <div className="text-[10px] text-ink-faint font-mono flex items-center justify-center gap-1"><Clock className="w-3 h-3" />TIME</div>
-          <div className="text-lg font-bold text-ink font-mono">{activeRoute.estimatedTimeMin} min</div>
+          <div className="text-[10px] text-ink-faint font-mono flex items-center justify-center gap-1"><Clock className="w-3 h-3" />{t('route.time')}</div>
+          <div className="text-lg font-bold text-ink font-mono">{activeRoute.estimatedTimeMin} {t('min')}</div>
         </div>
         <div className={`p-3 rounded-lg ${safetyColors.bg} border ${safetyColors.border} text-center`}>
-          <div className={`text-[10px] ${safetyColors.text} font-mono`}>ROUTE SAFETY</div>
-          <div className={`text-lg font-bold ${safetyColors.text} font-mono`}>{activeRoute.safetyLevel}</div>
+          <div className={`text-[10px] ${safetyColors.text} font-mono`}>{t('route.safety')}</div>
+          <div className={`text-lg font-bold ${safetyColors.text} font-mono`}>{t(`level.${activeRoute.safetyLevel}`)}</div>
         </div>
         <div className="p-3 rounded-lg bg-critical-soft border border-critical/30 text-center">
-          <div className="text-[10px] text-critical font-mono">BLOCKED ROADS</div>
+          <div className="text-[10px] text-critical font-mono">{t('route.blocked')}</div>
           <div className="text-lg font-bold text-critical font-mono">{activeRoute.blockedRoadsCount}</div>
         </div>
       </div>
@@ -98,14 +120,14 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
       {blockedRoads.length > 0 && (
         <div className="p-3 rounded-lg bg-critical-soft border border-critical/30 space-y-1.5">
           <div className="flex items-center gap-1.5 text-critical text-[11px] font-mono font-bold">
-            <AlertTriangle className="w-3.5 h-3.5" /> ROAD BLOCKED
+            <AlertTriangle className="w-3.5 h-3.5" /> {t('route.roadBlocked')}
           </div>
           {blockedRoads.slice(0, 2).map((b) => (
             <div key={b.id} className="text-[11px] text-ink-soft">{b.name} — {b.reason}</div>
           ))}
           {alternativeRoute && (
             <div className="text-[11px] text-safe pt-1">
-              Alternative route available: {alternativeRoute.distanceKm} km, {alternativeRoute.estimatedTimeMin} min, Safety {alternativeRoute.safetyScore}%.
+              {t('route.alt', { km: alternativeRoute.distanceKm, min: alternativeRoute.estimatedTimeMin, score: alternativeRoute.safetyScore })}
             </div>
           )}
         </div>
@@ -123,23 +145,29 @@ export const CitizenEvacRoute: React.FC<Props> = ({ location }) => {
             radius={8}
             pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.6 }}
           >
-            <Popup>{location.coords ? (location.isDemo ? 'Your location (demo)' : 'You are here') : 'Approximate location — visit Location tab for GPS'}</Popup>
+            <Popup>{location.coords ? (location.isDemo ? t('route.popupDemo') : t('route.popupYou')) : t('route.popupApprox')}</Popup>
           </CircleMarker>
         </MapContainer>
       </div>
 
+      {activeRoute.id.startsWith('road-') && (
+        <div className="p-2.5 rounded-lg bg-surface border border-hairline text-[11px] font-mono text-ink-soft">
+          {t('route.roadSource')}
+        </div>
+      )}
+
       {isDirectEstimate && (
         <div className="p-2.5 rounded-lg bg-surface border border-hairline text-[11px] font-mono text-ink-soft">
-          Direct-line distance estimate to {activeRoute.destinationName} — not a verified road corridor. Follow local signage and emergency personnel.
+          {t('route.directNote', { dest: activeRoute.destinationName })}
         </div>
       )}
 
       <div className="space-y-1.5">
-        <div className="text-[10px] font-mono text-ink-faint uppercase">Turn-by-Turn</div>
+        <div className="text-[10px] font-mono text-ink-faint uppercase">{t('route.turnByTurn')}</div>
         {activeRoute.turnByTurn.map((step) => (
           <div key={step.step} className="p-2.5 rounded-lg bg-surface border border-hairline text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-ink font-semibold">Step {step.step}</span>
+              <span className="text-ink font-semibold">{t('route.step', { n: step.step })}</span>
               <Badge variant={step.roadCondition === 'CLEAR' ? 'safe' : 'moderate'} size="sm">{step.roadCondition.replace('_', ' ')}</Badge>
             </div>
             <div className="text-ink-soft mt-1">{step.instruction}</div>

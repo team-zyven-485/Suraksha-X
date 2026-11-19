@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { authHeaders } from '../../lib/api';
 import {
   Bot,
   Send,
@@ -264,7 +265,7 @@ Ask me for real-time hazard assessments, safe rerouting around hazards, or click
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           message: queryText,
           context: {

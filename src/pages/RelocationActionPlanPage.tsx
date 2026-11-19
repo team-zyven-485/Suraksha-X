@@ -20,10 +20,10 @@ import {
 } from 'lucide-react';
 import { useDisaster } from '../context/DisasterContext';
 import { Badge } from '../components/common/Badge';
-import { ZyvenLogo } from '../components/common/ZyvenLogo';
+import { AppLogo } from '../components/common/AppLogo';
 import { ExportDirectiveModal } from '../components/modals/ExportDirectiveModal';
 import { CapBroadcastModal } from '../components/modals/CapBroadcastModal';
-import { persistRelocationPlan, isSupabaseConnected } from '../lib/supabase';
+import { persistRelocationPlan } from '../lib/persistence';
 
 export const RelocationActionPlanPage: React.FC = () => {
   const {
@@ -113,10 +113,12 @@ export const RelocationActionPlanPage: React.FC = () => {
     setIsSavingDb(true);
     const result = await persistRelocationPlan(plan);
     setIsSavingDb(false);
-    if (result.source === 'supabase') {
-      addToast('success', 'Synchronized to Supabase', `Relocation Plan #${plan.id} saved in cloud database.`);
+    if (result.source === 'server') {
+      addToast('success', 'Saved to Database', `Relocation Plan #${plan.id} saved on the server.`);
+    } else if (result.success) {
+      addToast('warning', 'Saved on This Device Only', `Relocation Plan #${plan.id} could not reach the server and was kept locally.`);
     } else {
-      addToast('info', 'Saved to Local Persistence', `Relocation Plan #${plan.id} saved locally. (Connect Supabase in .env to sync to cloud)`);
+      addToast('error', 'Save Failed', `Relocation Plan #${plan.id} could not be saved.`);
     }
   };
 
@@ -130,7 +132,7 @@ export const RelocationActionPlanPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-hairline pb-4">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <ZyvenLogo variant="horizontal" size="sm" showText={true} />
+            <AppLogo variant="horizontal" size="sm" showText={true} />
             <span className="text-ink-faint">•</span>
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${isAuthorized ? 'bg-critical animate-ping' : 'bg-warn'}`}></span>
@@ -152,10 +154,10 @@ export const RelocationActionPlanPage: React.FC = () => {
             onClick={handleSaveToDatabase}
             disabled={isSavingDb}
             className="px-3 py-1.5 rounded bg-surface hover:bg-paper-alt border border-hairline text-xs font-mono text-ink flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Save to Supabase Database"
+            title="Save plan to the database"
           >
             <Database className="w-3.5 h-3.5 text-brand" />
-            <span>{isSavingDb ? 'Saving...' : (isSupabaseConnected() ? 'Synced to Supabase' : 'Save Plan')}</span>
+            <span>{isSavingDb ? 'Saving...' : 'Save Plan'}</span>
           </button>
           <button
             onClick={() => setIsExportModalOpen(true)}

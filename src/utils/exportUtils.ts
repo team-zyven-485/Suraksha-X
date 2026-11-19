@@ -66,7 +66,7 @@ ${plan.checklist
 ------------------------------------------------------------------------
 AUTHENTICATION SEAL:
 Issued by: Admin • Incident Command Unit Alpha
-System: SURAKSHA-X Disaster Intelligence Platform (Team ZYVEN)
+System: SURAKSHA-X Disaster Intelligence Platform
 ========================================================================`;
 }
 
@@ -94,7 +94,7 @@ export function generateWordDocument(plan: RelocationPlan): string {
 </head>
 <body>
   <div class="header-box">
-    <div style="font-size: 10pt; color: #7f1d1d; font-weight: bold;">ZYVEN / DISASTER INCIDENT COMMAND • PROTOCOL #${plan.id}</div>
+    <div style="font-size: 10pt; color: #7f1d1d; font-weight: bold;">SURAKSHA-X / DISASTER INCIDENT COMMAND • PROTOCOL #${plan.id}</div>
     <h1>OFFICIAL RELOCATION DIRECTIVE</h1>
     <div><strong>STATUS:</strong> <span class="badge">AUTHORIZED & MANDATORY</span> | <strong>DATE:</strong> ${dateStr}</div>
     <div><strong>ISSUING AUTHORITY:</strong> Admin (Incident Commander Alpha)</div>
@@ -151,7 +151,7 @@ export function generateWordDocument(plan: RelocationPlan): string {
 
   <div class="seal">
     <p><strong>AUTHORIZED UNDER ADMIN INCIDENT COMMAND</strong></p>
-    <p>Powered by SURAKSHA-X Disaster Intelligence Platform (Team ZYVEN). All responding NDRF/SDRF units and civil transport marshals must adhere to this route directive.</p>
+    <p>Powered by SURAKSHA-X Disaster Intelligence Platform. All responding NDRF/SDRF units and civil transport marshals must adhere to this route directive.</p>
   </div>
 </body>
 </html>`;
@@ -167,7 +167,7 @@ export function generateCapXml(plan: RelocationPlan): string {
   <identifier>SURAKSHA-CAP-${plan.id}-${Date.now()}</identifier>
   <sender>Admin@suraksha-incident-command.gov.in</sender>
   <sent>${sentDate}</sent>
-  <status>Actual</status>
+  <status>Exercise</status>
   <msgType>Alert</msgType>
   <scope>Public</scope>
   <incidents>${plan.id}</incidents>

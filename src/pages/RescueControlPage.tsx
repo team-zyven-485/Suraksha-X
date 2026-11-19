@@ -15,6 +15,8 @@ import { useSOS } from '../context/SOSContext';
 import { useDisaster } from '../context/DisasterContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/common/Badge';
+import { LiveOpsMap } from '../components/live/LiveOpsMap';
+import { HazardSimulation } from '../components/sim/HazardSimulation';
 import { SOSIncident, RescuePriority, SOS_DISASTER_TYPE_LABELS } from '../types/sos';
 
 const requiredActionPresets = [
@@ -37,7 +39,7 @@ const statusBadgeVariant: Record<string, any> = {
 };
 
 export const RescueControlPage: React.FC = () => {
-  const { incidents, rescueTeams, assignTeam, dispatchTeam } = useSOS();
+  const { incidents, rescueTeams, assignTeam, dispatchTeam, closeSOS } = useSOS();
   const { riskZones, addToast } = useDisaster();
   const { user } = useAuth();
   const [selectedIncident, setSelectedIncident] = useState<SOSIncident | null>(null);
@@ -71,7 +73,7 @@ export const RescueControlPage: React.FC = () => {
     setNotes('');
   };
 
-  const submitAssignment = () => {
+  const submitAssignment = async () => {
     if (!teamPickerFor || !pickedTeamId) return;
     // Re-validate against live team status right before writing — the pick
     // may have gone stale while the modal was open (another admin session,
@@ -82,13 +84,20 @@ export const RescueControlPage: React.FC = () => {
       setPickedTeamId(null);
       return;
     }
-    assignTeam(teamPickerFor, pickedTeamId, {
+    const ok = await assignTeam(teamPickerFor, pickedTeamId, {
       priority: priorityOverride ?? undefined,
       requiredAction: requiredAction || 'Proceed to incident location and assess situation',
       notes,
       issuedBy: user?.name || 'Admin',
     });
-    closeAssignModal();
+    if (ok) {
+      closeAssignModal();
+    } else {
+      // The server refused (team taken / incident already assigned): the list
+      // has just been refreshed, so let the admin pick again.
+      addToast('warning', 'ASSIGNMENT NOT APPLIED', 'The team or incident changed while you were assigning. Review the updated list and try again.');
+      setPickedTeamId(null);
+    }
   };
 
   const activeSOS = incidents.filter((i) => i.status !== 'CLOSED' && i.status !== 'RESCUED');
@@ -141,6 +150,8 @@ export const RescueControlPage: React.FC = () => {
           <span className="text-2xl font-bold text-warn mt-1">{rescuesInProgress}</span>
         </div>
       </div>
+
+      <LiveOpsMap />
 
       {/* INCIDENT TABLE */}
       <div className="p-4 rounded-lg bg-surface border border-hairline shadow-xl space-y-3">
@@ -464,6 +475,35 @@ export const RescueControlPage: React.FC = () => {
                 Citizen SOS received from a {selectedIncident.priority === 'P1' ? 'critical red' : 'moderate risk'} zone.
               </div>
             </div>
+
+            {selectedIncident.status !== 'RESCUED' && selectedIncident.status !== 'CLOSED' && (
+              <HazardSimulation incident={selectedIncident} audience="staff" />
+            )}
+
+            {selectedIncident.status !== 'RESCUED' && selectedIncident.status !== 'CLOSED' && (
+              <div className="p-2.5 rounded bg-inset border border-hairline space-y-1.5">
+                <div className="text-[10px] font-mono text-ink-faint uppercase">CLOSE WITHOUT RESCUE</div>
+                <div className="flex gap-2">
+                  {(['FALSE_ALARM', 'DUPLICATE'] as const).map((reason) => (
+                    <button
+                      key={reason}
+                      onClick={async () => {
+                        const ok = await closeSOS(selectedIncident.id, reason);
+                        addToast(
+                          ok ? 'info' : 'error',
+                          ok ? 'Incident Closed' : 'Could not close incident',
+                          ok ? `${selectedIncident.id} closed as ${reason.replace('_', ' ').toLowerCase()}. Any assigned team was released.` : 'Refresh and try again.'
+                        );
+                        if (ok) setSelectedIncident(null);
+                      }}
+                      className="px-2.5 py-1 rounded border border-hairline text-[11px] font-mono text-ink-soft hover:text-ink"
+                    >
+                      {reason === 'FALSE_ALARM' ? 'False alarm' : 'Duplicate'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5 pt-1">
               <div className="text-[10px] font-mono text-ink-faint uppercase">STATUS HISTORY</div>

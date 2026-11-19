@@ -1,7 +1,7 @@
 import { RiskZone, ReliefCentre, EvacuationRoute, BlockedRoad, SystemAlert, RelocationPlan, RoadSegment } from '../types';
 import { ScenarioData, ScenarioMeta, DemographicSummary, AnalyticsData } from '../data/scenarios';
 import { getScenario, DEFAULT_SCENARIO_ID } from '../data/scenarios';
-import { getSupabaseClient } from '../lib/supabaseClient';
+import { upgradeToRoadRoute } from '../lib/roadRoute';
 
 let activeScenarioId = DEFAULT_SCENARIO_ID;
 
@@ -52,188 +52,17 @@ function buildDirectRoute(zone: RiskZone, shelter: ReliefCentre): EvacuationRout
         step: 1,
         instruction: `Proceed directly toward ${shelter.name}. This is a direct-line distance estimate, not a verified road corridor — dispatch a recon team to confirm the actual route before convoy departure.`,
         distance: `${Math.round(distanceKm * 10) / 10} km`,
-        roadCondition: 'CLEAR',
+        roadCondition: 'UNKNOWN',
       },
     ],
     isRecommended: false,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Row -> app-model mappers (snake_case DB columns -> the exact camelCase
-// TS interfaces the rest of the app already consumes, so no downstream page
-// or component needs to change).
-// ---------------------------------------------------------------------------
-function mapRiskZone(r: any): RiskZone {
-  return {
-    id: r.id,
-    name: r.name,
-    code: r.code,
-    district: r.district,
-    riverBasin: r.river_basin,
-    riskScore: r.risk_score,
-    riskLevel: r.risk_level,
-    priority: r.priority,
-    population: r.population,
-    vulnerablePopulation: r.vulnerable_population,
-    exposureLevel: r.exposure_level,
-    floodDepthEstMeters: Number(r.flood_depth_est_meters),
-    waterLevelTrend: r.water_level_trend,
-    recommendedAction: r.recommended_action,
-    coordinates: { lat: r.lat, lng: r.lng },
-    polygon: r.polygon,
-    vulnerabilityBreakdown: r.vulnerability_breakdown,
-    reasoning: r.reasoning,
-    lastAssessed: r.last_assessed,
-  };
-}
-
-function mapReliefCentre(r: any): ReliefCentre {
-  return {
-    id: r.id,
-    name: r.name,
-    code: r.code,
-    location: r.location,
-    coordinates: { lat: r.lat, lng: r.lng },
-    capacity: r.capacity,
-    occupancy: r.occupancy,
-    available: r.available,
-    status: r.status,
-    distanceKm: r.distance_km != null ? Number(r.distance_km) : undefined,
-    travelTimeMin: r.travel_time_min ?? undefined,
-    facilities: r.facilities,
-    contactOfficer: r.contact_officer,
-    elevationMeters: Number(r.elevation_meters),
-    safetyScore: r.safety_score,
-  };
-}
-
-function mapRoute(r: any): EvacuationRoute {
-  return {
-    id: r.id,
-    originId: r.origin_id,
-    originName: r.origin_name,
-    destinationId: r.destination_id,
-    destinationName: r.destination_name,
-    distanceKm: Number(r.distance_km),
-    estimatedTimeMin: r.estimated_time_min,
-    safetyScore: r.safety_score,
-    safetyLevel: r.safety_level,
-    blockedRoadsCount: r.blocked_roads_count,
-    elevationClearanceMeters: Number(r.elevation_clearance_meters),
-    coordinates: r.coordinates,
-    turnByTurn: r.turn_by_turn,
-    isRecommended: r.is_recommended,
-  };
-}
-
-function mapBlockedRoad(r: any): BlockedRoad {
-  return {
-    id: r.id,
-    name: r.name,
-    reason: r.reason,
-    coordinates: r.coordinates,
-    severity: r.severity,
-    reportedAt: r.reported_at,
-  };
-}
-
-function mapRoadSegment(r: any): RoadSegment {
-  return {
-    id: r.id,
-    name: r.name,
-    type: r.type,
-    status: r.status,
-    coordinates: r.coordinates,
-    speedLimitKmh: r.speed_limit_kmh,
-    lanes: r.lanes,
-    elevationMeters: Number(r.elevation_meters),
-  };
-}
-
-function mapAlert(r: any): SystemAlert {
-  return {
-    id: r.id,
-    title: r.title,
-    message: r.message,
-    severity: r.severity,
-    timestamp: r.timestamp,
-    zoneId: r.zone_id ?? undefined,
-    read: r.read,
-  };
-}
-
-function mapScenarioMeta(r: any): ScenarioMeta {
-  return {
-    id: r.id,
-    name: r.name,
-    disasterType: r.disaster_type,
-    category: r.category,
-    region: r.region,
-    state: r.state,
-    riverBasinOrFault: r.river_basin_or_fault,
-    lastUpdated: r.last_updated,
-    criticalZonesCount: r.critical_zones_count,
-    totalHazardZones: r.total_hazard_zones,
-    totalReliefCentres: r.total_relief_centres,
-    totalPopulationAtRisk: r.total_population_at_risk,
-    totalVulnerablePopulation: r.total_vulnerable_population,
-    availableShelterCapacity: r.available_shelter_capacity,
-    totalShelterCapacity: r.total_shelter_capacity,
-    totalShelterOccupancy: r.total_shelter_occupancy,
-    hazardIcon: r.hazard_icon,
-    hazardColor: r.hazard_color,
-  };
-}
-
-function mapDemographics(r: any): DemographicSummary {
-  return {
-    totalPopulationAtRisk: r.total_population_at_risk,
-    totalVulnerablePopulation: r.total_vulnerable_population,
-    activeHazardZonesCount: r.active_hazard_zones_count,
-    criticalZonesCount: r.critical_zones_count,
-    reliefCentresCount: r.relief_centres_count,
-    availableShelterCapacity: r.available_shelter_capacity,
-    totalShelterCapacity: r.total_shelter_capacity,
-    totalShelterOccupancy: r.total_shelter_occupancy,
-    vulnerabilityDistribution: r.vulnerability_distribution,
-  };
-}
-
-function mapAnalytics(r: any): AnalyticsData {
-  return {
-    riskDistributionData: r.risk_distribution,
-    riskTrendData: r.risk_trend,
-    zoneComparisonData: r.zone_comparison,
-    shelterUtilizationData: r.shelter_utilization,
-    evacuationProgressData: r.evacuation_progress,
-  };
-}
-
-/**
- * Runs a Supabase query and falls back to a local computation if Supabase is
- * unconfigured, the query errors, or returns no rows (e.g. before the seed
- * migration has been applied) — so the app keeps working out of the box.
- */
-async function withFallback<T>(
-  supabaseQuery: () => PromiseLike<{ data: any; error: any }>,
-  mapRows: (rows: any[]) => T,
-  fallback: () => T
-): Promise<T> {
-  const client = getSupabaseClient();
-  if (!client) return fallback();
-
-  try {
-    const { data, error } = await supabaseQuery();
-    if (error || !data || (Array.isArray(data) && data.length === 0)) {
-      return fallback();
-    }
-    return mapRows(data);
-  } catch {
-    return fallback();
-  }
-}
-
+// Scenario data is bundled with the app (src/data/scenarios) rather than
+// fetched, so every dashboard works with no connection at all. The server /
+// MongoDB persist the things that change at runtime: SOS incidents, rescue
+// team status, relocation plans and CAP broadcast logs.
 export const disasterService = {
   setActiveScenario(id: string) {
     activeScenarioId = id;
@@ -244,47 +73,19 @@ export const disasterService = {
   },
 
   async getScenarioMeta(): Promise<ScenarioMeta> {
-    const client = getSupabaseClient();
-    if (!client) return localScenario().meta;
-    try {
-      const { data, error } = await client.from('scenarios').select('*').eq('id', activeScenarioId).maybeSingle();
-      if (error || !data) return localScenario().meta;
-      return mapScenarioMeta(data);
-    } catch {
-      return localScenario().meta;
-    }
+    return localScenario().meta;
   },
 
   async getDemographics(): Promise<DemographicSummary> {
-    const client = getSupabaseClient();
-    if (!client) return localScenario().demographics;
-    try {
-      const { data, error } = await client.from('demographics').select('*').eq('scenario_id', activeScenarioId).maybeSingle();
-      if (error || !data) return localScenario().demographics;
-      return mapDemographics(data);
-    } catch {
-      return localScenario().demographics;
-    }
+    return localScenario().demographics;
   },
 
   async getAnalytics(): Promise<AnalyticsData> {
-    const client = getSupabaseClient();
-    if (!client) return localScenario().analytics;
-    try {
-      const { data, error } = await client.from('analytics_snapshots').select('*').eq('scenario_id', activeScenarioId).maybeSingle();
-      if (error || !data) return localScenario().analytics;
-      return mapAnalytics(data);
-    } catch {
-      return localScenario().analytics;
-    }
+    return localScenario().analytics;
   },
 
   async getRiskZones(): Promise<RiskZone[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('risk_zones').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapRiskZone),
-      () => [...localScenario().riskZones]
-    );
+    return [...localScenario().riskZones];
   },
 
   async getRiskZoneById(id: string): Promise<RiskZone | undefined> {
@@ -293,11 +94,7 @@ export const disasterService = {
   },
 
   async getReliefCentres(): Promise<ReliefCentre[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('relief_centres').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapReliefCentre),
-      () => [...localScenario().reliefCentres]
-    );
+    return [...localScenario().reliefCentres];
   },
 
   async getReliefCentreById(id: string): Promise<ReliefCentre | undefined> {
@@ -306,36 +103,21 @@ export const disasterService = {
   },
 
   async getRoutes(): Promise<EvacuationRoute[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('evacuation_routes').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapRoute),
-      () => [...localScenario().evacuationRoutes]
-    );
+    return [...localScenario().evacuationRoutes];
   },
 
   async getBlockedRoads(): Promise<BlockedRoad[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('blocked_roads').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapBlockedRoad),
-      () => [...localScenario().blockedRoads]
-    );
+    return [...localScenario().blockedRoads];
   },
 
   async getRoadNetworks(): Promise<RoadSegment[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('road_networks').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapRoadSegment),
-      () => [...localScenario().roadNetworks]
-    );
+    return [...localScenario().roadNetworks];
   },
 
   async getAlerts(): Promise<SystemAlert[]> {
-    return withFallback(
-      () => getSupabaseClient()!.from('alerts').select('*').eq('scenario_id', activeScenarioId),
-      (rows) => rows.map(mapAlert),
-      () => [...localScenario().alerts]
-    );
+    return [...localScenario().alerts];
   },
+
 
   async generateRelocationPlan(
     zoneId: string,
@@ -384,7 +166,7 @@ export const disasterService = {
     const primaryRoute =
       preferredRoute ||
       allRoutes.find((r) => r.destinationId === recommendedShelter.id) ||
-      buildDirectRoute(zone, recommendedShelter);
+      (await upgradeToRoadRoute(buildDirectRoute(zone, recommendedShelter)));
     const alternativeRoutes = allRoutes.filter((r) => r.id !== primaryRoute.id);
 
     const plan: RelocationPlan = {
@@ -411,9 +193,9 @@ export const disasterService = {
           id: 'chk-1',
           task: `Notify local emergency response team & community leaders in ${zone.name}`,
           assignee: 'NDRF Quick Response Team Alpha',
-          status: 'COMPLETED',
+          status: 'PENDING',
           priority: 'CRITICAL',
-          estimatedTime: `Done (${new Date().toLocaleTimeString()})`,
+          estimatedTime: '5 min',
         },
         {
           id: 'chk-2',

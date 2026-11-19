@@ -20,7 +20,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:5173").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,7 +34,7 @@ app.add_middleware(
 # Basic per-IP rate limiting. Several endpoints here (satellite/process,
 # hazard/detect, roads/impact) are unauthenticated and — once real Copernicus
 # credentials are configured — trigger paid API calls and service-role writes
-# to Supabase (which bypass RLS entirely). Without this, anyone who can reach
+# to MongoDB. Without this, anyone who can reach
 # the backend could spam those endpoints to burn API quota or flood the DB
 # with junk rows. In-memory sliding window is enough at this app's scale;
 # it resets on restart and isn't shared across replicas, which is an

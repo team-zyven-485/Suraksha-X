@@ -16,8 +16,8 @@ import { useDisaster, AppPage } from '../../context/DisasterContext';
 import { useSOS } from '../../context/SOSContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { useAuth } from '../../context/AuthContext';
-import { ZyvenLogo } from '../common/ZyvenLogo';
-import { isSupabaseConfigured } from '../../lib/supabaseClient';
+import { AppLogo } from '../common/AppLogo';
+import { useServerHealth } from '../../lib/useServerHealth';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -38,6 +38,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
   const { incidents } = useSOS();
   const { backendStatus, hazard } = useSatellite();
   const { user, logout } = useAuth();
+  const health = useServerHealth();
+  const healthOk = health === 'mongodb';
+  const healthLabel = { mongodb: 'DATABASE CONNECTED', memory: 'MEMORY MODE — NOT SAVED', offline: 'SERVER OFFLINE', checking: 'CHECKING…' }[health];
 
   const activeSOSCount = incidents.filter((i) => i.status !== 'CLOSED' && i.status !== 'RESCUED').length;
 
@@ -166,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
       <div className="p-4 border-b border-hairline">
         <div className="flex items-center gap-3">
           <div className="relative w-10 h-10 rounded-lg bg-brand-soft border border-brand/20 flex items-center justify-center p-1">
-            <ZyvenLogo variant="icon" size={32} />
+            <AppLogo variant="icon" size={32} />
             <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-safe border-2 border-surface" />
           </div>
 
@@ -175,9 +178,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
               <span className="text-base font-bold font-mono tracking-wider text-ink">
                 SURAKSHA-X
               </span>
-            </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <ZyvenLogo variant="horizontal" size="xs" showText={true} />
             </div>
           </div>
         </div>
@@ -243,14 +243,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
         <div className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-paper-alt border border-hairline">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isSupabaseConfigured() ? 'bg-safe' : 'bg-warn'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSupabaseConfigured() ? 'bg-safe' : 'bg-warn'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${healthOk ? 'bg-safe' : 'bg-warn'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${healthOk ? 'bg-safe' : 'bg-warn'}`}></span>
             </span>
-            <span className={`text-[11px] font-mono font-medium ${isSupabaseConfigured() ? 'text-safe' : 'text-warn'}`}>
-              {isSupabaseConfigured() ? 'SYSTEM OPERATIONAL' : 'LOCAL DEMO MODE'}
+            <span className={`text-[11px] font-mono font-medium ${healthOk ? 'text-safe' : 'text-warn'}`}>
+              {healthLabel}
             </span>
           </div>
-          <span className="text-[10px] font-mono text-ink-faint">v2.6.4</span>
+          <span className="text-[10px] font-mono text-ink-faint">v{__APP_VERSION__}</span>
         </div>
 
         <div className="flex items-center gap-2.5 px-2 py-1">

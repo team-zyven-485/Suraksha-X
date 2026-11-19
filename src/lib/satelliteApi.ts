@@ -8,7 +8,7 @@ import {
   SatelliteStatus,
 } from '../types/satellite';
 
-// No secrets live here — only the backend base URL. All Copernicus/Supabase
+// No secrets live here — only the backend base URL. All Copernicus/MongoDB
 // credentials stay server-side in the FastAPI backend's environment.
 function apiBaseUrl(): string {
   const env = (import.meta as any).env || {};

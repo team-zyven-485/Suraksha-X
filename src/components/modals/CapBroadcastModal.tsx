@@ -19,7 +19,7 @@ import {
 import { RelocationPlan } from '../../types';
 import { useDisaster } from '../../context/DisasterContext';
 import { generateCapXml } from '../../utils/exportUtils';
-import { persistCapBroadcast } from '../../lib/supabase';
+import { persistCapBroadcast } from '../../lib/persistence';
 
 interface CapBroadcastModalProps {
   plan: RelocationPlan | null;
@@ -32,7 +32,7 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { addToast, addAlert } = useDisaster();
+  const { addToast, addAlert, scenarioMeta } = useDisaster();
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastStage, setBroadcastStage] = useState<number>(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -53,11 +53,11 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
   // a channel actually removes its stage from the simulated broadcast
   // instead of running (and reporting) all five regardless of selection.
   const channelSteps: { key: keyof typeof channels; label: string }[] = [
-    { key: 'cellBroadcast', label: 'Handshake with State Disaster Telecom Gateway' },
-    { key: 'vhfRadio', label: 'VHF Radio Transmit Activated' },
-    { key: 'civicSiren', label: 'Public Address Klaxon Activated' },
-    { key: 'whatsApp', label: 'WhatsApp Incident Alert Pushed to Ward Subscribers' },
-    { key: 'shelterTriage', label: 'Ingested into Relief Centre Reception Manifest' },
+    { key: 'cellBroadcast', label: 'Handshake with State Disaster Telecom Gateway (simulated)' },
+    { key: 'vhfRadio', label: 'VHF Radio Transmit (simulated)' },
+    { key: 'civicSiren', label: 'Public Address Klaxon (simulated)' },
+    { key: 'whatsApp', label: 'WhatsApp Incident Alert to Ward Subscribers (simulated)' },
+    { key: 'shelterTriage', label: 'Relief Centre Reception Manifest update (simulated)' },
   ];
   const activeChannelSteps = channelSteps.filter((s) => channels[s.key]);
   const totalStages = 1 + activeChannelSteps.length; // +1 for the always-on CAP XML compile stage
@@ -111,16 +111,16 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
 
     const channelCount = activeChannelSteps.length;
 
-    // Persist to Supabase / Local storage
+    // Persist to the server (MongoDB); falls back to local storage
     await persistCapBroadcast({
       identifier: `SURAKSHA-CAP-${plan.id}-${Date.now()}`,
       sender: 'Admin (Incident Commander Alpha)',
       sent: new Date().toISOString(),
-      status: 'Actual',
+      status: 'Exercise', // CAP status for drills/simulations: this app sends no real alert
       msgType: 'Alert',
       headline: `IMMEDIATE EVACUATION ORDER: ${plan.zoneName}`,
       description: `Phased relocation of ${plan.vulnerablePopulation} priority citizens to ${plan.recommendedShelter.name} via ${plan.primaryRoute.destinationName}.`,
-      areaDesc: `${plan.zoneName}, Kamrup Basin`,
+      areaDesc: `${plan.zoneName}, ${scenarioMeta.region}`,
       channels: Object.keys(channels).filter((k) => (channels as any)[k]),
     });
 
@@ -128,14 +128,14 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
     addAlert({
       zoneId: plan.zoneId,
       severity: 'CRITICAL',
-      title: `🚨 CAP BROADCAST TRANSMITTED: ${plan.zoneName}`,
-      message: `Common Alerting Protocol evacuation order dispatched across ${channelCount} channel${channelCount !== 1 ? 's' : ''}. Shelter: ${plan.recommendedShelter.name}.`,
+      title: `CAP BROADCAST SIMULATED: ${plan.zoneName}`,
+      message: `Simulated Common Alerting Protocol order across ${channelCount} channel${channelCount !== 1 ? 's' : ''} — no real alert was sent. Shelter: ${plan.recommendedShelter.name}.`,
     });
 
     addToast(
       'success',
-      'CAP Emergency Broadcast Transmitted',
-      `Order ${plan.id} successfully dispatched to ${plan.zoneName} network via ${channelCount} channel${channelCount !== 1 ? 's' : ''}!`
+      'CAP Broadcast Simulated',
+      `Order ${plan.id}: simulated broadcast for ${plan.zoneName} via ${channelCount} channel${channelCount !== 1 ? 's' : ''}. Nothing was actually sent.`
     );
   };
 
@@ -287,15 +287,19 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
             </div>
           </div>
 
+          <div className="p-2.5 rounded-lg bg-warn-soft border border-warn/30 text-[11px] font-mono text-warn">
+            SIMULATION ONLY — this prototype generates the alert text and logs it. It does not connect to any telecom gateway, radio, siren or messaging service.
+          </div>
+
           {/* Real-time Broadcast Pipeline Tracker — one row per SELECTED channel */}
           {broadcastStage > 0 && (
             <div className="p-4 rounded-lg bg-surface border border-hairline space-y-3 animate-in fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-ink uppercase">
-                  LIVE BROADCAST PIPELINE STATUS
+                  BROADCAST PIPELINE — SIMULATION
                 </span>
                 <span className="text-[10px] font-mono text-safe font-bold">
-                  {isComplete ? '● TRANSMISSION 100% CONFIRMED' : '● TRANSMITTING...'}
+                  {isComplete ? '● SIMULATION COMPLETE — NOTHING WAS SENT' : '● SIMULATING...'}
                 </span>
               </div>
 
@@ -349,7 +353,7 @@ export const CapBroadcastModal: React.FC<CapBroadcastModalProps> = ({
               className="px-4 py-2 rounded-lg bg-critical hover:bg-critical/90 disabled:opacity-50 text-white text-xs font-mono font-bold flex items-center gap-2 shadow-sm transition-colors"
             >
               <Send className="w-4 h-4" />
-              <span>{isBroadcasting ? (isComplete ? 'Broadcast Finished ✓' : 'Transmitting...') : 'START BROADCAST NOW'}</span>
+              <span>{isBroadcasting ? (isComplete ? 'Simulation Finished ✓' : 'Simulating...') : 'RUN BROADCAST SIMULATION'}</span>
             </button>
           </div>
         </div>

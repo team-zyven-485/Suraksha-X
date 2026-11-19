@@ -15,26 +15,24 @@ import {
   Landmark,
   Flame,
   HelpCircle,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSOS } from '../../context/SOSContext';
 import { useDisaster } from '../../context/DisasterContext';
-import { SOSStatus, SOSDisasterType, SOS_DISASTER_TYPE_LABELS } from '../../types/sos';
+import { SOSStatus, SOSDisasterType } from '../../types/sos';
 import { CitizenLocationState } from './CitizenApp';
+import { useI18n } from '../../i18n';
+import { CitizenLiveTeam } from '../../components/live/CitizenLiveTeam';
+import { HazardSimulation } from '../../components/sim/HazardSimulation';
+import { getCurrentFix, FAILURE_KEY, LocationFailure } from '../../lib/geolocate';
 
 interface Props {
   location: CitizenLocationState;
   setLocation: (loc: CitizenLocationState) => void;
 }
 
-const statusSteps: { status: SOSStatus; label: string }[] = [
-  { status: 'REQUESTED', label: 'SOS Received' },
-  { status: 'ASSIGNED', label: 'Rescue Team Assigned' },
-  { status: 'DISPATCHED', label: 'Team Dispatched' },
-  { status: 'EN_ROUTE', label: 'Team En Route' },
-  { status: 'ARRIVED', label: 'Team Arrived' },
-  { status: 'RESCUED', label: 'Rescue Completed' },
-];
+const statusSteps: SOSStatus[] = ['REQUESTED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'RESCUED'];
 
 const statusOrder: SOSStatus[] = ['REQUESTED', 'VERIFIED', 'ASSIGNED', 'DISPATCHED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'RESCUED', 'CLOSED'];
 
@@ -50,11 +48,15 @@ const disasterTypeOptions: { type: SOSDisasterType; icon: React.FC<{ className?:
 
 export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
   const { user } = useAuth();
-  const { createSOS, getTeamById, incidents } = useSOS();
+  const { createSOS, closeSOS, getTeamById, incidents } = useSOS();
   const { riskZones, scenarioMeta, addToast } = useDisaster();
+  const { t } = useI18n();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
+  const [locationProblem, setLocationProblem] = useState<LocationFailure | null>(null);
   const [selectedDisasterType, setSelectedDisasterType] = useState<SOSDisasterType>(
     scenarioMeta.disasterType as SOSDisasterType
   );
@@ -67,34 +69,64 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
   const lastResolvedIncident = !activeIncident
     ? myIncidents.find((i) => i.status === 'RESCUED' || i.status === 'CLOSED') || null
     : null;
+  const isQueued = activeIncident?.syncState === 'QUEUED';
+  // Can only be withdrawn before a team is assigned; after that the citizen must call Rescue Control.
+  const canCancel =
+    !!activeIncident && !activeIncident.assignedTeamId && (isQueued || activeIncident.status === 'REQUESTED' || activeIncident.status === 'VERIFIED');
+
+  const handleCancel = async () => {
+    if (!activeIncident) return;
+    setIsCancelling(true);
+    const ok = await closeSOS(activeIncident.id);
+    setIsCancelling(false);
+    setConfirmCancel(false);
+    if (!ok) addToast('error', t('sos.cancelFailedTitle'), t('sos.cancelFailed'));
+  };
 
   const processingMessages = [
-    'Acquiring location…',
-    'Location acquired…',
-    'Checking communication…',
-    `Running AI impact analysis for ${SOS_DISASTER_TYPE_LABELS[selectedDisasterType]}…`,
-    'Sending emergency request to Admin & nearest Rescue Team…',
+    t('sos.p1'),
+    t('sos.p2'),
+    t('sos.p3'),
+    t('sos.p4', { type: t(`dtype.${selectedDisasterType}`) }),
+    t('sos.p5'),
   ];
 
-  const handleSendSOS = async () => {
+  const handleSendSOS = async (opts: { allowDemo?: boolean } = {}) => {
     setShowConfirm(false);
+    setLocationProblem(null);
     setIsProcessing(true);
+    setProcessingStep(0);
 
-    let coords = location.coords;
-    let isDemo = location.isDemo;
-
-    if (!coords) {
-      const fallbackZone = [...riskZones].sort((a, b) => b.riskScore - a.riskScore)[0];
-      if (fallbackZone) {
-        coords = { lat: fallbackZone.coordinates.lat, lng: fallbackZone.coordinates.lng };
+    // Always ask the device for the CURRENT position first — never reuse a
+    // demo location the user may have picked earlier.
+    let coords: { lat: number; lng: number } | null = null;
+    let isDemo = false;
+    const fix = await getCurrentFix();
+    if (fix.ok) {
+      coords = fix.coords;
+      setLocation({ coords: fix.coords, accuracy: fix.accuracy, isDemo: false });
+    } else if (location.coords && !location.isDemo) {
+      coords = location.coords; // fall back to the last REAL position we already had
+    } else if (opts.allowDemo) {
+      // Only when the user explicitly chose "send with a demo location" (testing).
+      const demoZone = [...riskZones].sort((a, b) => b.riskScore - a.riskScore)[0];
+      if (demoZone) {
+        coords = { lat: demoZone.coordinates.lat, lng: demoZone.coordinates.lng };
         isDemo = true;
         setLocation({ coords, accuracy: null, isDemo: true });
       }
     }
 
-    for (let i = 0; i < processingMessages.length; i++) {
+    if (!coords) {
+      // Rescuers must not be dispatched to a made-up place: stop and let the citizen decide.
+      setIsProcessing(false);
+      setLocationProblem('reason' in fix ? fix.reason : 'unavailable');
+      return;
+    }
+
+    for (let i = 1; i < processingMessages.length; i++) {
       setProcessingStep(i);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 400));
     }
 
     let sentOk = false;
@@ -102,8 +134,6 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
       const incident = await createSOS({
         coordinates: coords,
         isDemoLocation: isDemo,
-        citizenId: user.id,
-        citizenName: user.name,
         disasterType: selectedDisasterType,
       });
       sentOk = incident !== null;
@@ -113,11 +143,7 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
     setProcessingStep(0);
 
     if (!sentOk) {
-      addToast(
-        'error',
-        'SOS Failed to Send',
-        'Your emergency request could not be transmitted. Please try again or seek help directly if possible.'
-      );
+      addToast('error', t('sos.failedTitle'), t('sos.failedBody'));
     }
   };
 
@@ -126,7 +152,7 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-bold font-mono text-ink">My Emergency Status</h2>
+      <h2 className="text-sm font-bold font-mono text-ink">{t('sos.title')}</h2>
 
       {!activeIncident && !isProcessing && (
         <>
@@ -134,8 +160,28 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
             <div className="p-3 rounded-lg bg-safe-soft border border-safe/30 text-[11px] font-mono text-safe flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>
-                Your last emergency ({lastResolvedIncident.id}) was marked {lastResolvedIncident.status === 'RESCUED' ? 'RESCUED' : 'CLOSED'}. You can send a new SOS below if you need help again.
+                {t('sos.lastResolved', {
+                  id: lastResolvedIncident.id,
+                  status: lastResolvedIncident.status === 'RESCUED' ? t('sos.rescuedWord') : t('sos.closedWord'),
+                })}
               </span>
+            </div>
+          )}
+          {locationProblem && (
+            <div className="p-3.5 rounded-xl bg-warn-soft border border-warn/30 space-y-2.5 text-xs font-mono">
+              <div className="font-bold text-warn uppercase text-[11px]">{t('sos.locFailedTitle')}</div>
+              <div className="text-ink leading-relaxed">{t(FAILURE_KEY[locationProblem])}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button onClick={() => handleSendSOS()} className="py-2 rounded-lg bg-critical text-white font-bold">
+                  {t('sos.retry')}
+                </button>
+                <button
+                  onClick={() => handleSendSOS({ allowDemo: true })}
+                  className="py-2 rounded-lg border border-hairline text-ink-soft hover:text-ink"
+                >
+                  {t('sos.sendDemo')}
+                </button>
+              </div>
             </div>
           )}
           <button
@@ -143,11 +189,9 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
             className="w-full py-5 rounded-xl bg-critical hover:bg-critical/90 text-white font-mono font-black text-lg uppercase tracking-wider shadow-sm flex flex-col items-center justify-center gap-1.5 transition-colors border-2 border-critical/30"
           >
             <ShieldAlert className="w-7 h-7" />
-            <span>Emergency SOS</span>
+            <span>{t('sos.button')}</span>
           </button>
-          <p className="text-[11px] text-ink-soft text-center">
-            For people who are trapped, injured, unable to evacuate, or unable to reach a safe centre.
-          </p>
+          <p className="text-[11px] text-ink-soft text-center">{t('sos.help')}</p>
         </>
       )}
 
@@ -160,22 +204,30 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
 
       {activeIncident && (
         <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-safe-soft border border-safe/30 text-center">
-            <CheckCircle2 className="w-8 h-8 text-safe mx-auto mb-1" />
-            <div className="text-sm font-bold font-mono text-ink">SOS TRANSMITTED</div>
-            <div className="text-[11px] font-mono text-ink-soft">{activeIncident.id}</div>
-          </div>
+          {isQueued ? (
+            <div className="p-4 rounded-xl bg-warn-soft border border-warn/30 text-center space-y-1">
+              <WifiOff className="w-8 h-8 text-warn mx-auto mb-1" />
+              <div className="text-sm font-bold font-mono text-ink">{t('sos.queuedTitle')}</div>
+              <div className="text-[11px] font-mono text-ink-soft">{t('sos.queuedBody')}</div>
+            </div>
+          ) : (
+            <div className="p-4 rounded-xl bg-safe-soft border border-safe/30 text-center">
+              <CheckCircle2 className="w-8 h-8 text-safe mx-auto mb-1" />
+              <div className="text-sm font-bold font-mono text-ink">{t('sos.transmitted')}</div>
+              <div className="text-[11px] font-mono text-ink-soft">{activeIncident.id}</div>
+            </div>
+          )}
 
           <div className="p-4 rounded-xl bg-surface border border-hairline space-y-2 text-xs font-mono">
-            <div className="flex justify-between"><span className="text-ink-faint">Location</span><span className="text-ink">{activeIncident.location}</span></div>
-            <div className="flex justify-between"><span className="text-ink-faint">Disaster Type</span><span className="text-ink">{SOS_DISASTER_TYPE_LABELS[activeIncident.disasterType]}</span></div>
-            <div className="flex justify-between"><span className="text-ink-faint">Risk</span><span className="text-critical font-bold">{activeIncident.riskScore}/100</span></div>
-            <div className="flex justify-between"><span className="text-ink-faint">Priority</span><span className="text-critical font-bold">{activeIncident.priority} — {activeIncident.priority === 'P1' ? 'CRITICAL RESCUE' : 'RESCUE'}</span></div>
+            <div className="flex justify-between"><span className="text-ink-faint">{t('sos.location')}</span><span className="text-ink">{activeIncident.location}</span></div>
+            <div className="flex justify-between"><span className="text-ink-faint">{t('sos.disasterType')}</span><span className="text-ink">{t(`dtype.${activeIncident.disasterType}`)}</span></div>
+            <div className="flex justify-between"><span className="text-ink-faint">{t('sos.risk')}</span><span className="text-critical font-bold">{activeIncident.riskScore}/100</span></div>
+            <div className="flex justify-between"><span className="text-ink-faint">{t('sos.priority')}</span><span className="text-critical font-bold">{activeIncident.priority} — {activeIncident.priority === 'P1' ? t('sos.critical') : t('sos.rescue')}</span></div>
           </div>
 
           {activeIncident.affectedZones.length > 0 && (
             <div className="p-3 rounded-lg bg-warn-soft border border-warn/30 space-y-1">
-              <div className="text-[10px] font-mono text-warn uppercase font-semibold">AI-Flagged Nearby Affected Areas</div>
+              <div className="text-[10px] font-mono text-warn uppercase font-semibold">{t('sos.flagged')}</div>
               <div className="flex flex-wrap gap-1.5">
                 {activeIncident.affectedZones.map((z) => (
                   <span key={z.zoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-warn-soft border border-warn/30 text-warn font-mono">
@@ -186,46 +238,55 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
             </div>
           )}
 
-          <div className="p-4 rounded-xl bg-surface border border-hairline space-y-2.5">
-            <div className="text-[11px] font-mono text-ink-soft uppercase font-semibold">My Emergency Status</div>
-            {statusSteps.map((step, idx) => {
-              const stepIdx = statusOrder.indexOf(step.status);
-              const isDone = currentStatusIndex >= stepIdx && currentStatusIndex !== -1 && stepIdx <= currentStatusIndex;
-              const isCurrent = activeIncident.status === step.status;
-              return (
-                <div key={step.status} className="flex items-center gap-2 text-xs font-mono">
-                  {isDone ? (
-                    <CheckCircle2 className="w-4 h-4 text-safe shrink-0" />
-                  ) : (
-                    <Circle className={`w-4 h-4 shrink-0 ${isCurrent ? 'text-brand' : 'text-ink-faint'}`} />
-                  )}
-                  <span className={isDone ? 'text-ink' : isCurrent ? 'text-brand font-semibold' : 'text-ink-faint'}>
-                    {step.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+          {!isQueued && (
+            <div className="p-4 rounded-xl bg-surface border border-hairline space-y-2.5">
+              <div className="text-[11px] font-mono text-ink-soft uppercase font-semibold">{t('sos.title')}</div>
+              {statusSteps.map((step) => {
+                const stepIdx = statusOrder.indexOf(step);
+                const isDone = currentStatusIndex !== -1 && stepIdx <= currentStatusIndex;
+                const isCurrent = activeIncident.status === step;
+                return (
+                  <div key={step} className="flex items-center gap-2 text-xs font-mono">
+                    {isDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-safe shrink-0" />
+                    ) : (
+                      <Circle className={`w-4 h-4 shrink-0 ${isCurrent ? 'text-brand' : 'text-ink-faint'}`} />
+                    )}
+                    <span className={isDone ? 'text-ink' : isCurrent ? 'text-brand font-semibold' : 'text-ink-faint'}>
+                      {t(`sos.step.${step}`)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {assignedTeam && (
             <div className="p-4 rounded-xl bg-brand-soft border border-brand/30 space-y-1.5 text-xs font-mono">
               <div className="flex items-center gap-1.5 text-brand font-semibold uppercase text-[11px]">
-                <UsersRound className="w-3.5 h-3.5" /> Assigned Team
+                <UsersRound className="w-3.5 h-3.5" /> {t('sos.assignedTeam')}
               </div>
               <div className="text-ink font-bold">{assignedTeam.name}</div>
               <div className="text-ink-soft flex items-center gap-1.5">
-                <Clock className="w-3 h-3" /> ETA: {activeIncident.etaMin ?? assignedTeam.baseEtaMin} minutes
+                <Clock className="w-3 h-3" /> {t('sos.eta', { n: activeIncident.etaMin ?? assignedTeam.baseEtaMin })}
               </div>
               <div className="text-ink-soft flex items-center gap-1.5">
-                <Radio className="w-3 h-3" /> Communication: {activeIncident.communicationMode}
+                <Radio className="w-3 h-3" />{' '}
+                {t('sos.comm', {
+                  mode: activeIncident.communicationMode === 'Mobile Network' ? t('sos.commMobile') : t('sos.commOffline'),
+                })}
               </div>
             </div>
           )}
 
+          {assignedTeam && !isQueued && <CitizenLiveTeam incident={activeIncident} team={assignedTeam} />}
+
+          <HazardSimulation incident={activeIncident} audience="citizen" />
+
           {activeIncident.instructions && (
             <div className="p-4 rounded-xl bg-surface border border-hairline space-y-1.5 text-xs font-mono">
               <div className="flex items-center gap-1.5 text-ink-soft font-semibold uppercase text-[11px]">
-                <ClipboardList className="w-3.5 h-3.5 text-brand" /> Admin Instructions to Rescue Team
+                <ClipboardList className="w-3.5 h-3.5 text-brand" /> {t('sos.adminInstr')}
               </div>
               <div className="text-ink-soft">{activeIncident.instructions.requiredAction}</div>
               {activeIncident.instructions.notes && (
@@ -234,6 +295,34 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
             </div>
           )}
 
+          {canCancel &&
+            (confirmCancel ? (
+              <div className="p-3 rounded-xl bg-warn-soft border border-warn/30 space-y-2 text-xs font-mono">
+                <div className="text-ink">{t('sos.cancelAsk')}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setConfirmCancel(false)}
+                    className="py-2 rounded-lg bg-paper-alt text-ink font-semibold"
+                  >
+                    {t('sos.cancelKeep')}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isCancelling}
+                    className="py-2 rounded-lg bg-critical text-white font-bold disabled:opacity-60"
+                  >
+                    {t('sos.cancelYes')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmCancel(true)}
+                className="w-full py-2 rounded-lg border border-hairline text-ink-soft hover:text-ink text-[11px] font-mono"
+              >
+                {t('sos.cancelBtn')}
+              </button>
+            ))}
         </div>
       )}
 
@@ -242,17 +331,15 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-inset backdrop-blur-md">
           <div className="w-full max-w-sm bg-surface border-2 border-critical/30 rounded-xl shadow-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-black font-mono text-critical uppercase">Emergency SOS</span>
-              <button onClick={() => setShowConfirm(false)} className="text-ink-soft hover:text-ink">
+              <span className="text-sm font-black font-mono text-critical uppercase">{t('sos.confirmTitle')}</span>
+              <button onClick={() => setShowConfirm(false)} className="text-ink-soft hover:text-ink" aria-label={t('sos.cancel')}>
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-sm text-ink">Are you unable to evacuate safely?</p>
+            <p className="text-sm text-ink">{t('sos.unableEvac')}</p>
 
             <div className="space-y-1.5">
-              <div className="text-[10px] font-mono text-ink-soft uppercase font-semibold">
-                What type of disaster is affecting you?
-              </div>
+              <div className="text-[10px] font-mono text-ink-soft uppercase font-semibold">{t('sos.whatType')}</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {disasterTypeOptions.map(({ type, icon: Icon }) => {
                   const isSelected = selectedDisasterType === type;
@@ -267,28 +354,26 @@ export const CitizenMySOS: React.FC<Props> = ({ location, setLocation }) => {
                       }`}
                     >
                       <Icon className="w-3.5 h-3.5 shrink-0" />
-                      <span>{SOS_DISASTER_TYPE_LABELS[type]}</span>
+                      <span>{t(`dtype.${type}`)}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <p className="text-xs text-ink-soft">
-              Your location and disaster type will be shared with SURAKSHA-X Admin Rescue Control and the nearest matching Rescue Team.
-            </p>
+            <p className="text-xs text-ink-soft">{t('sos.share')}</p>
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 onClick={() => setShowConfirm(false)}
                 className="py-2.5 rounded-lg bg-paper-alt hover:bg-paper-alt text-ink text-xs font-mono font-semibold"
               >
-                Cancel
+                {t('sos.cancel')}
               </button>
               <button
-                onClick={handleSendSOS}
+                onClick={() => handleSendSOS()}
                 className="py-2.5 rounded-lg bg-critical hover:bg-critical/90 text-white text-xs font-mono font-bold"
               >
-                Send SOS
+                {t('sos.send')}
               </button>
             </div>
           </div>

@@ -20,8 +20,10 @@ import { useSOS } from '../../context/SOSContext';
 import { useDisaster } from '../../context/DisasterContext';
 import { useSatellite } from '../../context/SatelliteContext';
 import { Badge } from '../../components/common/Badge';
-import { ZyvenLogo } from '../../components/common/ZyvenLogo';
+import { AppLogo } from '../../components/common/AppLogo';
 import { ToastContainer } from '../../components/common/Toast';
+import { RescueLivePanel } from '../../components/live/RescueLivePanel';
+import { HazardSimulation } from '../../components/sim/HazardSimulation';
 import { SOSStatus, SOS_DISASTER_TYPE_LABELS } from '../../types/sos';
 
 const statusBadgeVariant: Record<string, any> = {
@@ -75,7 +77,7 @@ export const RescueTeamApp: React.FC = () => {
       <header className="h-14 bg-surface border-b border-hairline px-4 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-brand-soft border border-brand/20 flex items-center justify-center p-1">
-            <ZyvenLogo variant="icon" size={22} />
+            <AppLogo variant="icon" size={22} />
           </div>
           <div>
             <div className="text-sm font-bold font-mono text-ink leading-none">SURAKSHA-X</div>
@@ -259,23 +261,10 @@ export const RescueTeamApp: React.FC = () => {
               </div>
             )}
 
-            {/* Map */}
-            <div className="h-64 rounded-xl overflow-hidden border border-hairline">
-              <MapContainer center={[activeIncident.coordinates.lat, activeIncident.coordinates.lng]} zoom={12} style={{ height: '100%', width: '100%' }}>
-                <TileLayer attribution="&copy; OpenStreetMap" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                {route && <Polyline positions={route.coordinates} pathOptions={{ color: '#3b82f6', weight: 4 }} />}
-                <CircleMarker
-                  center={[activeIncident.coordinates.lat, activeIncident.coordinates.lng]}
-                  radius={10}
-                  pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.6 }}
-                >
-                  <Popup>SOS Victim Location — {activeIncident.id}</Popup>
-                </CircleMarker>
-              </MapContainer>
-            </div>
-            <div className="text-[10px] font-mono text-ink-faint flex items-center gap-1.5">
-              <Navigation className="w-3 h-3" /> Simulated team position — not real-time GPS tracking.
-            </div>
+            {/* Live tracking: real GPS (or labelled demo drive), real road route, ETA */}
+            {team && <RescueLivePanel team={team} incident={activeIncident} />}
+
+            <HazardSimulation incident={activeIncident} audience="staff" />
 
             {routeEval && (
               <div className={`p-2.5 rounded-lg border flex items-center gap-2 text-[11px] font-mono ${
