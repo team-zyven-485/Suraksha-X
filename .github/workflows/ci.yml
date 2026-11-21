@@ -21,6 +21,12 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Vercel function bundle is up to date
+        run: |
+          npm run build:api
+          git diff --exit-code api/index.js || (echo "api/index.js is stale: run 'npm run build:api' and commit it" && exit 1)
+      - name: Vercel frontend build
+        run: npx vite build
       - name: API end-to-end tests (in-memory database)
         env:
           PORT: 3100

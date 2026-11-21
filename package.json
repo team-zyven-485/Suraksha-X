@@ -12,12 +12,14 @@
     "lint": "tsc --noEmit",
     "test:api": "node scripts/api-smoke-test.mjs",
     "satellite": "node scripts/start-satellite.mjs",
-    "test": "node --import tsx --test \"tests/*.test.ts\""
+    "test": "node --import tsx --test \"tests/*.test.ts\"",
+    "build:api": "esbuild api-src/handler.ts --bundle --platform=node --format=esm --packages=external --outfile=api/index.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/leaflet": "^1.9.22",
+    "@vercel/functions": "^3.11.3",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
@@ -42,5 +44,8 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

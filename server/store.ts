@@ -149,7 +149,8 @@ class MongoStore implements Store {
   private caps!: Collection<any>;
 
   constructor(private uri: string, private dbName: string) {
-    this.client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000, appName: 'suraksha-x' });
+    // Small pool on serverless: every concurrent function instance opens its own connections.
+    this.client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000, appName: 'suraksha-x', maxPoolSize: process.env.VERCEL ? 3 : 10 });
   }
 
   async init() {
@@ -256,6 +257,12 @@ export async function ensureSrvResolvable(uri: string): Promise<void> {
 
 export async function createStore(): Promise<Store> {
   const uri = process.env.MONGODB_URI?.trim();
+  // Serverless instances do not share memory: an in-memory store there would show every
+  // request a different, empty world. So on Vercel a real database is mandatory.
+  const serverless = !!process.env.VERCEL;
+  if (!uri && serverless) {
+    throw new Error('MONGODB_URI is required on Vercel: serverless instances cannot share in-memory data.');
+  }
   if (!uri) {
     console.warn('[DB] MONGODB_URI is not set — using the in-memory store. Data is lost when the server restarts.');
     return new MemoryStore();
@@ -267,6 +274,7 @@ export async function createStore(): Promise<Store> {
     console.log('[DB] Connected to MongoDB.');
     return store;
   } catch (err: any) {
+    if (serverless) throw err; // never degrade to a per-instance memory store on serverless
     // Never fail silently into memory mode with a configured URI: say so loudly.
     console.error(`[DB] Could not connect to MongoDB (${err?.message || err}). Falling back to the in-memory store.`);
     return new MemoryStore();

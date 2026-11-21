@@ -467,6 +467,11 @@ export function createApiRouter(store: Store): Router {
           })
           .finally(() => simInflight.delete(key));
         simInflight.set(key, job);
+        // On serverless the function would be frozen right after we respond, killing the
+        // Gemini request that is still running. waitUntil keeps it alive until it finishes.
+        if (process.env.VERCEL) {
+          import('@vercel/functions').then(({ waitUntil }) => waitUntil(job!)).catch(() => {});
+        }
       }
       const quick = await Promise.race([job, new Promise<null>((resolve) => setTimeout(() => resolve(null), SIM_QUICK_WAIT_MS))]);
       if (quick) return res.json(quick);
