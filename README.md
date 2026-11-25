@@ -80,9 +80,29 @@ npm run build
 npm start           # one Node process serves the frontend and /api
 ```
 
-Deploy to a host that runs a persistent Node process (Render, Railway, a VM). Set the same
-environment variables in the host's dashboard, plus `NODE_ENV=production` and `TRUST_PROXY=1`
-when behind the host's proxy. Offline support requires HTTPS (or localhost).
+Works on any host that runs a persistent Node process (Render, Railway, a VM). Set the
+environment variables below in the host's dashboard, plus `NODE_ENV=production` and
+`TRUST_PROXY=1` when behind the host's proxy. Offline support requires HTTPS (or localhost).
+
+### Deploying on Vercel
+
+The frontend is static and the API runs as a single serverless function (`api/index.js`, a prebuilt
+bundle of `api-src/handler.ts` → `server/app.ts`; `vercel.json` routes `/api/*` to it).
+
+1. Import the GitHub repo in Vercel (framework preset: **Other**; the build/output settings come from `vercel.json`).
+2. Add these **environment variables**: `MONGODB_URI`, `MONGODB_DB` (use a separate demo database),
+   `ADMIN_ACCESS_CODE`, `RESCUE_ACCESS_CODE`, `SESSION_SECRET` (32+ random characters), `GEMINI_API_KEY`.
+3. In MongoDB Atlas → Network Access, allow `0.0.0.0/0` (Vercel functions have no fixed IP) and use a strong database password.
+4. Deploy. Check `https://<your-app>.vercel.app/api/health` — it should say `"database":"mongodb"`.
+
+Things that behave differently on serverless:
+
+* **MongoDB is mandatory.** Function instances do not share memory, so the in-memory fallback is disabled on Vercel (the API returns 503 with a clear message if the database is not configured).
+* **Rate limits and caches are per instance**, so they are softer than on a single server (login limits can be exceeded across instances). Fine for a demo; use a shared store (e.g. Redis) for real traffic.
+* **Free-tier limits:** the app polls every 4 s per open dashboard, so many open tabs use up invocations quickly.
+* The optional **satellite service** is not deployed (its page shows "offline"/DEMO).
+* After changing anything under `server/`, `src/shared/` or `api-src/`, run `npm run build:api` and commit `api/index.js` (CI fails if it is stale).
+* To check the bundle locally before deploying: `npm run build:api`, then `node scripts/vercel-local.mjs` and `PORT=3300 npm run test:api` in another terminal.
 
 ## Which Gemini models are used
 
